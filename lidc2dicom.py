@@ -9,11 +9,12 @@ import logging
 from decimal import *
 
 from pydicom.sr import coding
+from pydicom.uid import generate_uid
 
 from highdicom.version import __version__ as highdicom_version
 from highdicom.content import AlgorithmIdentificationSequence
 from highdicom.seg.content import SegmentDescription
-from highdicom.seg.enum import SegmentationTypeValues
+from highdicom.seg.enum import SegmentAlgorithmTypeValues, SegmentationTypeValues
 from highdicom.seg.sop import Segmentation
 
 class LIDC2DICOMConverter:
@@ -25,6 +26,7 @@ class LIDC2DICOMConverter:
     self.rootDir = args.imagesDir
     self.tempDir= args.outputDir
 
+    self.srTemplate = "sr_conversion_template.json"
     self.colorsFile = "GenericColors.txt"
 
     # read GenericColors
@@ -62,7 +64,7 @@ class LIDC2DICOMConverter:
   #  writer.SetUseCompression(True)
   #  writer.Update()
 
-  def convertSingleAnnotation(self, nCount, aCount, a, ct_datasets, noduleUID, volume, seriesDir, scan):
+  def convertSingleAnnotation(self, nCount, aCount, a, ct_datasets, noduleUID, seriesDir, scan):
 
     # update as necessary!
     noduleName = "Nodule "+str(nCount+1)
@@ -72,12 +74,12 @@ class LIDC2DICOMConverter:
         segment_number=1,
         segment_label=segName,
         segmented_property_category=coding.Code("M-01000", "SRT", "Morphological Abnormal Structure"),
-        segmented_property_category=coding.Code("M-03010", "SRT", "Nodule"),
-        algorithm_type=SegmentAlgorithmTypes.MANUAL,
+        segmented_property_type=coding.Code("M-03010", "SRT", "Nodule"),
+        algorithm_type=SegmentAlgorithmTypeValues.MANUAL,
         algorithm_identification=None,  # TODO
         tracking_uid=noduleUID,
         tracking_id=noduleName,
-        anatomic_regions=coding.Code("T-28000", "SRT", "Lung"),
+        anatomic_regions=[coding.Code("T-28000", "SRT", "Lung")],
     )
     seg_desc.SegmentDescription = segName  # TODO should this be part of the init?
     seg_desc.RecommendedDisplayCIELabValue = self.colors[aCount + 1]  # TODO should this be part of the init?
@@ -100,21 +102,26 @@ class LIDC2DICOMConverter:
     mask[a.bbox()] = a.boolean_mask().astype(np.int8)
 
     # Find the subset of the source images relevant for the segmentation
-    ct_subset = source_images[a.bbox()[2]]
+    ct_subset = ct_datasets[a.bbox()[2]]
+    mask_subset = mask[(slice(None), slice(None), a.bbox()[2])]
+    mask_subset = np.moveaxis(mask_subset, 2, 0)
 
     seg_dcm = Segmentation(
         source_images=ct_subset,
-        pixel_array=mask,
+        pixel_array=mask_subset,
         segmentation_type=SegmentationTypeValues.BINARY,
         segment_descriptions=[seg_desc],
-        series_description=f"Segmentation of {segName}",
+        series_instance_uid=generate_uid(),
         series_number=series_num,
+        sop_instance_uid=generate_uid(),
         instance_number=1,
-        manufacturer="highdicom developers"
+        manufacturer="highdicom developers",
         manufacturer_model_name="highdicom",
         software_versions=f"{highdicom_version}",
+        device_serial_number='1',
         content_description="Lung nodule segmentation",
-        content_creator_name="Reader1"
+        content_creator_name="Reader1",
+        series_description=f"Segmentation of {segName}"
     )
 
     # Add in some extra information
@@ -123,6 +130,9 @@ class LIDC2DICOMConverter:
     seg_dcm.ClincalTrialTimePointID = "1"
     seg_dcm.ClinicalTrialCoordinatingCenterName = "TCIA"
     seg_dcm.ContentLabel = "SEGMENTATION"
+
+    # Save the file
+    seg_dcm.save_as(dcmSegFile)
 
     segUID = None
     ctSeriesUID = None
@@ -232,11 +242,8 @@ class LIDC2DICOMConverter:
         self.logger.error("Files not found for subject "+s)
         return
 
-      dcmFiles = scan.sorted_dicom_file_names.split(',')
       try:
-        ct_datasets = [
-            pydicom.dcmread(seriesDir / f, stop_before_pixels=True) for f in dcmFiles
-        ]
+        ct_datasets = scan.load_all_dicom_images()
       except:
         logger.error("Failed to read input CT files")
         return
@@ -245,7 +252,8 @@ class LIDC2DICOMConverter:
       if not ok:
         self.logger.warning("Geometry inconsistent for subject %s" % (s))
 
-      #self.tempSubjectDir = os.path.join(self.tempDir,s,studyUID,seriesUID)
+      self.tempSubjectDir = os.path.join(self.tempDir,s,studyUID,seriesUID)
+      os.makedirs(self.tempSubjectDir, exist_ok=True)
 
       #scanNRRDFile = os.path.join(self.tempSubjectDir,s+'_CT.nrrd')
       #if not os.path.exists(scanNRRDFile):
@@ -290,7 +298,7 @@ class LIDC2DICOMConverter:
           annotationFileName = "Nodule "+str(nCount+1) +" - Annotation " + a._nodule_id+'.nrrd'
           # self.saveAnnotationAsNRRD(a, volume, os.path.join(self.tempSubjectDir,annotationFileName))
 
-          self.convertSingleAnnotation(nCount, aCount, a, ct_datasets, noduleUID, volume, seriesDir, scan)
+          self.convertSingleAnnotation(nCount, aCount, a, ct_datasets, noduleUID, seriesDir, scan)
 
 
       if len(clusteredAnnotationIDs) != len(anns):
@@ -301,7 +309,7 @@ class LIDC2DICOMConverter:
           aCount = aCount+1
           nCount = nCount+1
           noduleUID = pydicom.uid.generate_uid(prefix=None)
-          self.convertSingleAnnotation(nCount, aCount, ua, ct_datasets, noduleUID, volume, seriesDir, scan)
+          self.convertSingleAnnotation(nCount, aCount, ua, ct_datasets, noduleUID, seriesDir, scan)
 
       #self.cleanUpTempDir(self.tempSubjectDir)
 
