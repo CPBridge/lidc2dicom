@@ -8,6 +8,14 @@ import glob
 import logging
 from decimal import *
 
+from pydicom.sr import coding
+
+from highdicom.version import __version__ as highdicom_version
+from highdicom.content import AlgorithmIdentificationSequence
+from highdicom.seg.content import SegmentDescription
+from highdicom.seg.enum import SegmentationTypeValues
+from highdicom.seg.sop import Segmentation
+
 class LIDC2DICOMConverter:
 
   def __init__(self, args):
@@ -17,8 +25,6 @@ class LIDC2DICOMConverter:
     self.rootDir = args.imagesDir
     self.tempDir= args.outputDir
 
-    self.segTemplate = "seg_conversion_template.json"
-    self.srTemplate = "sr_conversion_template.json"
     self.colorsFile = "GenericColors.txt"
 
     # read GenericColors
@@ -40,66 +46,83 @@ class LIDC2DICOMConverter:
     for p in Path(dir).glob("*.nrrd"):
       p.unlink()
 
-  def saveAnnotationAsNRRD(self, annotation, refVolume, fileName):
-    maskArray = annotation.boolean_mask(10000).astype(np.int16)
+  #def saveAnnotationAsNRRD(self, annotation, refVolume, fileName):
+  #  maskArray = annotation.boolean_mask(10000).astype(np.int16)
 
-    maskArray = np.swapaxes(maskArray,0,2).copy()
-    maskArray = np.rollaxis(maskArray,2,1).copy()
+  #  maskArray = np.swapaxes(maskArray,0,2).copy()
+  #  maskArray = np.rollaxis(maskArray,2,1).copy()
 
-    maskVolume = itk.GetImageFromArray(maskArray)
-    maskVolume.SetSpacing(refVolume.GetSpacing())
-    maskVolume.SetOrigin(refVolume.GetOrigin())
-    writerType = itk.ImageFileWriter[itk.Image[itk.SS, 3]]
-    writer = writerType.New()
-    writer.SetFileName(fileName)
-    writer.SetInput(maskVolume)
-    writer.SetUseCompression(True)
-    writer.Update()
+  #  maskVolume = itk.GetImageFromArray(maskArray)
+  #  maskVolume.SetSpacing(refVolume.GetSpacing())
+  #  maskVolume.SetOrigin(refVolume.GetOrigin())
+  #  writerType = itk.ImageFileWriter[itk.Image[itk.SS, 3]]
+  #  writer = writerType.New()
+  #  writer.SetFileName(fileName)
+  #  writer.SetInput(maskVolume)
+  #  writer.SetUseCompression(True)
+  #  writer.Update()
 
-  def convertSingleAnnotation(self, nCount, aCount, a, ctDCM, noduleUID, volume, seriesDir):
-    with open(self.segTemplate,'r') as f:
-      segJSON = json.load(f)
+  def convertSingleAnnotation(self, nCount, aCount, a, ct_datasets, noduleUID, volume, seriesDir, scan):
 
     # update as necessary!
     noduleName = "Nodule "+str(nCount+1)
     segName = "Nodule "+str(nCount+1) +" - Annotation " + a._nodule_id
 
-    nrrdSegFile = os.path.join(self.tempSubjectDir, segName+'.nrrd')
-    if not os.path.exists(nrrdSegFile):
-      self.logger.error("Cannot convert single annotation - file does not exist")
-      raise Exception("Cannot convert single annotation - file does not exist")
-
-    segJSON["segmentAttributes"][0][0]["SegmentDescription"] = segName
-    segJSON["segmentAttributes"][0][0]["SegmentLabel"] = segName
-    segJSON["SeriesDescription"] = "Segmentation of "+segName
+    seg_desc = SegmentDescription(
+        segment_number=1,
+        segment_label=segName,
+        segmented_property_category=coding.Code("M-01000", "SRT", "Morphological Abnormal Structure"),
+        segmented_property_category=coding.Code("M-03010", "SRT", "Nodule"),
+        algorithm_type=SegmentAlgorithmTypes.MANUAL,
+        algorithm_identification=None,  # TODO
+        tracking_uid=noduleUID,
+        tracking_id=noduleName,
+        anatomic_regions=coding.Code("T-28000", "SRT", "Lung"),
+    )
+    seg_desc.SegmentDescription = segName  # TODO should this be part of the init?
+    seg_desc.RecommendedDisplayCIELabValue = self.colors[aCount + 1]  # TODO should this be part of the init?
 
     self.instanceCount = self.instanceCount+1
-    if ctDCM.SeriesNumber != '':
-      segJSON["SeriesNumber"] = str(int(ctDCM.SeriesNumber)+self.instanceCount)
+    if ct_datasets[0].SeriesNumber != '':
+      series_num = int(ct_datasets[0].SeriesNumber) + self.instanceCount
     else:
-      segJSON["SeriesNumber"] = str(self.instanceCount)
-
-    for ci in range(3):
-        segJSON["segmentAttributes"][0][0]["recommendedDisplayRGBValue"][ci] = self.colors[aCount+1][ci]
-
-    segJSON["segmentAttributes"][0][0]["TrackingIdentifier"] = noduleName
-    segJSON["segmentAttributes"][0][0]["TrackingUniqueIdentifier"] = noduleUID
-
-    jsonSegFile = os.path.join(self.tempSubjectDir,segName+'.json')
-    with open(jsonSegFile, "w") as f:
-      json.dump(segJSON, f, indent=2)
+      series_num = self.instanceCount
 
     dcmSegFile = os.path.join(self.tempSubjectDir,segName+'.dcm')
 
-    converterCmd = ['itkimage2segimage', "--inputImageList", nrrdSegFile, "--inputDICOMDirectory", seriesDir, "--inputMetadata", jsonSegFile, "--outputDICOM", dcmSegFile]
-    if self.args.skip:
-      converterCmd.append('--skip')
-    self.logger.info("Converting to DICOM SEG with "+str(converterCmd))
+    self.logger.info("Converting to DICOM SEG")
 
-    sp = subprocess.Popen(converterCmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    (stdout, stderr) = sp.communicate()
-    self.logger.info("itkimage2segimage stdout: "+stdout.decode('ascii'))
-    self.logger.warning("itkimage2segimage stderr: "+stderr.decode('ascii'))
+    # Construct an enpty mask the same size as the input series
+    image_size = (ct_datasets[0].Rows, ct_datasets[0].Columns, len(ct_datasets))
+    mask = np.zeros(image_size, np.uint8)
+
+    # Fill in the mask elements with the segmentation
+    mask[a.bbox()] = a.boolean_mask().astype(np.int8)
+
+    # Find the subset of the source images relevant for the segmentation
+    ct_subset = source_images[a.bbox()[2]]
+
+    seg_dcm = Segmentation(
+        source_images=ct_subset,
+        pixel_array=mask,
+        segmentation_type=SegmentationTypeValues.BINARY,
+        segment_descriptions=[seg_desc],
+        series_description=f"Segmentation of {segName}",
+        series_number=series_num,
+        instance_number=1,
+        manufacturer="highdicom developers"
+        manufacturer_model_name="highdicom",
+        software_versions=f"{highdicom_version}",
+        content_description="Lung nodule segmentation",
+        content_creator_name="Reader1"
+    )
+
+    # Add in some extra information
+    seg_dcm.BodyPartExamined = "Lung"
+    seg_dcm.ClincalTrialSeriesID = "Session1"
+    seg_dcm.ClincalTrialTimePointID = "1"
+    seg_dcm.ClinicalTrialCoordinatingCenterName = "TCIA"
+    seg_dcm.ContentLabel = "SEGMENTATION"
 
     segUID = None
     ctSeriesUID = None
@@ -123,8 +146,8 @@ class LIDC2DICOMConverter:
     srJSON["observerContext"]["PersonObserverName"] = "anonymous"
 
     self.instanceCount = self.instanceCount+1
-    if ctDCM.SeriesNumber != '':
-      srJSON["SeriesNumber"] = str(int(ctDCM.SeriesNumber)+self.instanceCount)
+    if ct_datasets[0].SeriesNumber != '':
+      srJSON["SeriesNumber"] = str(int(ct_datasets[0].SeriesNumber)+self.instanceCount)
     else:
       srJSON["SeriesNumber"] = str(self.instanceCount)
 
@@ -204,51 +227,47 @@ class LIDC2DICOMConverter:
     for scan in scans:
       studyUID = scan.study_instance_uid
       seriesUID = scan.series_instance_uid
-      seriesDir = scan.get_path_to_dicom_files()
+      seriesDir = Path(scan.get_path_to_dicom_files())
       if not os.path.exists(seriesDir):
         self.logger.error("Files not found for subject "+s)
         return
 
-      dcmFiles = glob.glob(os.path.join(seriesDir,"*.dcm"))
-      if not len(dcmFiles):
-        logger.error("No DICOM files found for subject "+s)
-        return
-
-      firstFile = os.path.join(seriesDir,dcmFiles[0])
-
+      dcmFiles = scan.sorted_dicom_file_names.split(',')
       try:
-        ctDCM = pydicom.read_file(firstFile)
+        ct_datasets = [
+            pydicom.dcmread(seriesDir / f, stop_before_pixels=True) for f in dcmFiles
+        ]
       except:
-        logger.error("Failed to read input file "+firstFile)
+        logger.error("Failed to read input CT files")
         return
 
-      ok = lidc_helpers.checkSeriesGeometry(seriesDir)
+      ok = lidc_helpers.checkSeriesGeometry(str(seriesDir))
       if not ok:
         self.logger.warning("Geometry inconsistent for subject %s" % (s))
 
-      self.tempSubjectDir = os.path.join(self.tempDir,s,studyUID,seriesUID)
+      #self.tempSubjectDir = os.path.join(self.tempDir,s,studyUID,seriesUID)
 
-      scanNRRDFile = os.path.join(self.tempSubjectDir,s+'_CT.nrrd')
-      if not os.path.exists(scanNRRDFile):
-        # convert
-        # tempDir = tempfile.mkdtemp()
-        plastimatchCmd = ['plastimatch', 'convert','--input',seriesDir,'--output-img',scanNRRDFile]
-        self.logger.info("Running plastimatch with "+str(plastimatchCmd))
+      #scanNRRDFile = os.path.join(self.tempSubjectDir,s+'_CT.nrrd')
+      #if not os.path.exists(scanNRRDFile):
+      #  # convert
+      #  # tempDir = tempfile.mkdtemp()
+      #  plastimatchCmd = ['plastimatch', 'convert','--input',seriesDir,'--output-img',scanNRRDFile]
+      #  self.logger.info("Running plastimatch with "+str(plastimatchCmd))
 
-        sp = subprocess.Popen(plastimatchCmd, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
-        (stdout, stderr) = sp.communicate()
-        self.logger.info("plastimatch stdout: "+stdout.decode('ascii'))
-        self.logger.warning("plastimatch stderr: "+stderr.decode('ascii'))
+      #  sp = subprocess.Popen(plastimatchCmd, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+      #  (stdout, stderr) = sp.communicate()
+      #  self.logger.info("plastimatch stdout: "+stdout.decode('ascii'))
+      #  self.logger.warning("plastimatch stderr: "+stderr.decode('ascii'))
 
-        self.logger.info('plastimatch completed')
-        self.logger.info("Conversion of CT volume OK - result in "+scanNRRDFile)
-      else:
-        self.logger.info(scanNRRDFile+" exists. Not rerunning volume reconstruction.")
+      #  self.logger.info('plastimatch completed')
+      #  self.logger.info("Conversion of CT volume OK - result in "+scanNRRDFile)
+      #else:
+      #  self.logger.info(scanNRRDFile+" exists. Not rerunning volume reconstruction.")
 
-      reader = itk.ImageFileReader[itk.Image[itk.SS, 3]].New()
-      reader.SetFileName(scanNRRDFile)
-      reader.Update()
-      volume = reader.GetOutput()
+      #reader = itk.ImageFileReader[itk.Image[itk.SS, 3]].New()
+      #reader.SetFileName(scanNRRDFile)
+      #reader.Update()
+      #volume = reader.GetOutput()
 
       #logger.info(volume.GetLargestPossibleRegion().GetSize())
 
@@ -269,9 +288,9 @@ class LIDC2DICOMConverter:
           clusteredAnnotationIDs.append(a.id)
 
           annotationFileName = "Nodule "+str(nCount+1) +" - Annotation " + a._nodule_id+'.nrrd'
-          self.saveAnnotationAsNRRD(a, volume, os.path.join(self.tempSubjectDir,annotationFileName))
+          # self.saveAnnotationAsNRRD(a, volume, os.path.join(self.tempSubjectDir,annotationFileName))
 
-          self.convertSingleAnnotation(nCount, aCount, a, ctDCM, noduleUID, volume, seriesDir)
+          self.convertSingleAnnotation(nCount, aCount, a, ct_datasets, noduleUID, volume, seriesDir, scan)
 
 
       if len(clusteredAnnotationIDs) != len(anns):
@@ -282,7 +301,7 @@ class LIDC2DICOMConverter:
           aCount = aCount+1
           nCount = nCount+1
           noduleUID = pydicom.uid.generate_uid(prefix=None)
-          self.convertSingleAnnotation(nCount, aCount, ua, ctDCM, noduleUID, volume, seriesDir)
+          self.convertSingleAnnotation(nCount, aCount, ua, ct_datasets, noduleUID, volume, seriesDir, scan)
 
       #self.cleanUpTempDir(self.tempSubjectDir)
 
