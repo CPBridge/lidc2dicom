@@ -1,47 +1,47 @@
 {
   "subtlety": {
-    "CodeValue": "C45992",
-    "CodeMeaning": "Subtlety score",
-    "CodingSchemeDesignator": "NCIt"
+    "value": "C45992",
+    "meaning": "Subtlety score",
+    "scheme_designator": "NCIt"
   },
   "internalStructure": {
-    "CodeValue": "200",
-    "CodeMeaning": "Internal structure",
-    "CodingSchemeDesignator": "99LIDCQIICR"
+    "value": "200",
+    "meaning": "Internal structure",
+    "scheme_designator": "99LIDCQIICR"
   },
   "calcification": {
-    "CodeValue": "C3672",
-    "CodeMeaning": "Calcification",
-    "CodingSchemeDesignator": "NCIt"
+    "value": "C3672",
+    "meaning": "Calcification",
+    "scheme_designator": "NCIt"
   },
   "sphericity": {
-    "CodeValue": "400",
-    "CodeMeaning": "Sphericity",
-    "CodingSchemeDesignator": "99LIDCQIICR"
+    "value": "400",
+    "meaning": "Sphericity",
+    "scheme_designator": "99LIDCQIICR"
   },
   "margin": {
-    "CodeValue": "C25563",
-    "CodeMeaning": "Margin",
-    "CodingSchemeDesignator": "NCIt"
+    "value": "C25563",
+    "meaning": "Margin",
+    "scheme_designator": "NCIt"
   },
   "lobulation": {
-    "CodeValue": "C62175",
-    "CodeMeaning": "Lobular Pattern",
-    "CodingSchemeDesignator": "NCIt"
+    "value": "C62175",
+    "meaning": "Lobular Pattern",
+    "scheme_designator": "NCIt"
   },
   "spiculation": {
-    "CodeValue": "C28749",
-    "CodeMeaning": "Spiculation",
-    "CodingSchemeDesignator": "NCIt"
+    "value": "C28749",
+    "meaning": "Spiculation",
+    "scheme_designator": "NCIt"
   },
   "texture": {
-    "CodeValue": "C41144",
-    "CodeMeaning": "Texture",
-    "CodingSchemeDesignator": "NCIt"
+    "value": "C41144",
+    "meaning": "Texture",
+    "scheme_designator": "NCIt"
   },
   "malignancy": {
-    "CodeValue": "RID36042",
-    "CodeMeaning": "Malignancy",
-    "CodingSchemeDesignator": "RadLex"
+    "value": "RID36042",
+    "meaning": "Malignancy",
+    "scheme_designator": "RadLex"
   }
 }

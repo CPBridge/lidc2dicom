@@ -1,272 +1,272 @@
 {
   "generic": {
     "1": {
-      "CodeValue": "001",
-      "CodeMeaning": "1 out of 5",
-      "CodingSchemeDesignator": "99LIDCQIICR"
+      "value": "001",
+      "meaning": "1 out of 5",
+      "scheme_designator": "99LIDCQIICR"
     },
     "2": {
-      "CodeValue": "002",
-      "CodeMeaning": "2 out of 5",
-      "CodingSchemeDesignator": "99LIDCQIICR"
+      "value": "002",
+      "meaning": "2 out of 5",
+      "scheme_designator": "99LIDCQIICR"
     },
     "3": {
-      "CodeValue": "003",
-      "CodeMeaning": "3 out of 5",
-      "CodingSchemeDesignator": "99LIDCQIICR"
+      "value": "003",
+      "meaning": "3 out of 5",
+      "scheme_designator": "99LIDCQIICR"
     },
     "4": {
-      "CodeValue": "004",
-      "CodeMeaning": "4 out of 5",
-      "CodingSchemeDesignator": "99LIDCQIICR"
+      "value": "004",
+      "meaning": "4 out of 5",
+      "scheme_designator": "99LIDCQIICR"
     },
     "5": {
-      "CodeValue": "005",
-      "CodeMeaning": "5 out of 5",
-      "CodingSchemeDesignator": "99LIDCQIICR"
+      "value": "005",
+      "meaning": "5 out of 5",
+      "scheme_designator": "99LIDCQIICR"
     }
   },
   "subtlety": {
     "1": {
-      "CodeValue": "101",
-      "CodeMeaning": "1 out of 5 (Extremely subtle)",
-      "CodingSchemeDesignator": "99LIDCQIICR"
+      "value": "101",
+      "meaning": "1 out of 5 (Extremely subtle)",
+      "scheme_designator": "99LIDCQIICR"
     },
     "2": {
-      "CodeValue": "102",
-      "CodeMeaning": "2 out of 5 (Moderately subtle)",
-      "CodingSchemeDesignator": "99LIDCQIICR"
+      "value": "102",
+      "meaning": "2 out of 5 (Moderately subtle)",
+      "scheme_designator": "99LIDCQIICR"
     },
     "3": {
-      "CodeValue": "103",
-      "CodeMeaning": "3 out of 5 (Fairly subtle)",
-      "CodingSchemeDesignator": "99LIDCQIICR"
+      "value": "103",
+      "meaning": "3 out of 5 (Fairly subtle)",
+      "scheme_designator": "99LIDCQIICR"
     },
     "4": {
-      "CodeValue": "104",
-      "CodeMeaning": "4 out of 5 (Moderately obvious)",
-      "CodingSchemeDesignator": "99LIDCQIICR"
+      "value": "104",
+      "meaning": "4 out of 5 (Moderately obvious)",
+      "scheme_designator": "99LIDCQIICR"
     },
     "5": {
-      "CodeValue": "105",
-      "CodeMeaning": "5 out of 5 (Obvious)",
-      "CodingSchemeDesignator": "99LIDCQIICR"
+      "value": "105",
+      "meaning": "5 out of 5 (Obvious)",
+      "scheme_designator": "99LIDCQIICR"
     }
   },
   "internalStructure": {
     "1": {
-      "CodeValue": "C12471",
-      "CodeMeaning": "Soft tissue",
-      "CodingSchemeDesignator": "NCIt"
+      "value": "C12471",
+      "meaning": "Soft tissue",
+      "scheme_designator": "NCIt"
     },
     "2": {
-      "CodeValue": "C25278",
-      "CodeMeaning": "Fluid",
-      "CodingSchemeDesignator": "NCIt"
+      "value": "C25278",
+      "meaning": "Fluid",
+      "scheme_designator": "NCIt"
     },
     "3": {
-      "CodeValue": "C12472",
-      "CodeMeaning": "Adipose tissue",
-      "CodingSchemeDesignator": "NCIt"
+      "value": "C12472",
+      "meaning": "Adipose tissue",
+      "scheme_designator": "NCIt"
     },
     "4": {
-      "CodeValue": "C73434",
-      "CodeMeaning": "Air",
-      "CodingSchemeDesignator": "NCIt"
+      "value": "C73434",
+      "meaning": "Air",
+      "scheme_designator": "NCIt"
     }
   },
   "calcification": {
     "1": {
-      "CodeValue": "RID35453",
-      "CodeMeaning": "Popcorn calcification sign",
-      "CodingSchemeDesignator": "RadLex"
+      "value": "RID35453",
+      "meaning": "Popcorn calcification sign",
+      "scheme_designator": "RadLex"
     },
     "2": {
-      "CodeValue": "302",
-      "CodeMeaning": "Laminated appearance",
-      "CodingSchemeDesignator": "99LIDCQIICR"
+      "value": "302",
+      "meaning": "Laminated appearance",
+      "scheme_designator": "99LIDCQIICR"
     },
     "3": {
-      "CodeValue": "RID5741",
-      "CodeMeaning": "Solid appearance",
-      "CodingSchemeDesignator": "RadLex"
+      "value": "RID5741",
+      "meaning": "Solid appearance",
+      "scheme_designator": "RadLex"
     },
     "4": {
-      "CodeValue": "304",
-      "CodeMeaning": "Non-central appearance",
-      "CodingSchemeDesignator": "99LIDCQIICR"
+      "value": "304",
+      "meaning": "Non-central appearance",
+      "scheme_designator": "99LIDCQIICR"
     },
     "5": {
-      "CodeValue": "RID5827",
-      "CodeMeaning": "Central calcification",
-      "CodingSchemeDesignator": "RadLex"
+      "value": "RID5827",
+      "meaning": "Central calcification",
+      "scheme_designator": "RadLex"
     },
     "6": {
-      "CodeValue": "RID28473",
-      "CodeMeaning": "Absent",
-      "CodingSchemeDesignator": "RadLex"
+      "value": "RID28473",
+      "meaning": "Absent",
+      "scheme_designator": "RadLex"
     }
   },
   "sphericity": {
     "1": {
-      "CodeValue": "RID5811",
-      "CodeMeaning": "linear",
-      "CodingSchemeDesignator": "RadLex"
+      "value": "RID5811",
+      "meaning": "linear",
+      "scheme_designator": "RadLex"
     },
     "2": {
-      "CodeValue": "002",
-      "CodeMeaning": "2 out of 5",
-      "CodingSchemeDesignator": "99LIDCQIICR"
+      "value": "002",
+      "meaning": "2 out of 5",
+      "scheme_designator": "99LIDCQIICR"
     },
     "3": {
-      "CodeValue": "RID5800",
-      "CodeMeaning": "ovoid",
-      "CodingSchemeDesignator": "RadLex"
+      "value": "RID5800",
+      "meaning": "ovoid",
+      "scheme_designator": "RadLex"
     },
     "4": {
-      "CodeValue": "004",
-      "CodeMeaning": "4 out of 5",
-      "CodingSchemeDesignator": "99LIDCQIICR"
+      "value": "004",
+      "meaning": "4 out of 5",
+      "scheme_designator": "99LIDCQIICR"
     },
     "5": {
-      "CodeValue": "RID5799",
-      "CodeMeaning": "round",
-      "CodingSchemeDesignator": "RadLex"
+      "value": "RID5799",
+      "meaning": "round",
+      "scheme_designator": "RadLex"
     }
   },
   "margin": {
     "1": {
-      "CodeValue": "RID5709",
-      "CodeMeaning": "Indistinct margin",
-      "CodingSchemeDesignator": "RadLex"
+      "value": "RID5709",
+      "meaning": "Indistinct margin",
+      "scheme_designator": "RadLex"
     },
     "2": {
-      "CodeValue": "002",
-      "CodeMeaning": "2 out of 5",
-      "CodingSchemeDesignator": "99LIDCQIICR"
+      "value": "002",
+      "meaning": "2 out of 5",
+      "scheme_designator": "99LIDCQIICR"
     },
     "3": {
-      "CodeValue": "003",
-      "CodeMeaning": "3 out of 5",
-      "CodingSchemeDesignator": "99LIDCQIICR"
+      "value": "003",
+      "meaning": "3 out of 5",
+      "scheme_designator": "99LIDCQIICR"
     },
     "4": {
-      "CodeValue": "004",
-      "CodeMeaning": "4 out of 5",
-      "CodingSchemeDesignator": "99LIDCQIICR"
+      "value": "004",
+      "meaning": "4 out of 5",
+      "scheme_designator": "99LIDCQIICR"
     },
     "5": {
-      "CodeValue": "RID5707",
-      "CodeMeaning": "Circumscribed margin",
-      "CodingSchemeDesignator": "RadLex"
+      "value": "RID5707",
+      "meaning": "Circumscribed margin",
+      "scheme_designator": "RadLex"
     }
   },
   "lobulation": {
     "1": {
-      "CodeValue": "601",
-      "CodeMeaning": "1 out of 5 (No lobulation)",
-      "CodingSchemeDesignator": "99LIDCQIICR"
+      "value": "601",
+      "meaning": "1 out of 5 (No lobulation)",
+      "scheme_designator": "99LIDCQIICR"
     },
     "2": {
-      "CodeValue": "002",
-      "CodeMeaning": "2 out of 5",
-      "CodingSchemeDesignator": "99LIDCQIICR"
+      "value": "002",
+      "meaning": "2 out of 5",
+      "scheme_designator": "99LIDCQIICR"
     },
     "3": {
-      "CodeValue": "003",
-      "CodeMeaning": "3 out of 5",
-      "CodingSchemeDesignator": "99LIDCQIICR"
+      "value": "003",
+      "meaning": "3 out of 5",
+      "scheme_designator": "99LIDCQIICR"
     },
     "4": {
-      "CodeValue": "004",
-      "CodeMeaning": "4 out of 5",
-      "CodingSchemeDesignator": "99LIDCQIICR"
+      "value": "004",
+      "meaning": "4 out of 5",
+      "scheme_designator": "99LIDCQIICR"
     },
     "5": {
-      "CodeValue": "605",
-      "CodeMeaning": "5 out of 5 (Marked lobulation)",
-      "CodingSchemeDesignator": "99LIDCQIICR"
+      "value": "605",
+      "meaning": "5 out of 5 (Marked lobulation)",
+      "scheme_designator": "99LIDCQIICR"
     }
   },
   "spiculation": {
     "1": {
-      "CodeValue": "701",
-      "CodeMeaning": "1 out of 5 (No spiculation)",
-      "CodingSchemeDesignator": "99LIDCQIICR"
+      "value": "701",
+      "meaning": "1 out of 5 (No spiculation)",
+      "scheme_designator": "99LIDCQIICR"
     },
     "2": {
-      "CodeValue": "002",
-      "CodeMeaning": "2 out of 5",
-      "CodingSchemeDesignator": "99LIDCQIICR"
+      "value": "002",
+      "meaning": "2 out of 5",
+      "scheme_designator": "99LIDCQIICR"
     },
     "3": {
-      "CodeValue": "003",
-      "CodeMeaning": "3 out of 5",
-      "CodingSchemeDesignator": "99LIDCQIICR"
+      "value": "003",
+      "meaning": "3 out of 5",
+      "scheme_designator": "99LIDCQIICR"
     },
     "4": {
-      "CodeValue": "004",
-      "CodeMeaning": "4 out of 5",
-      "CodingSchemeDesignator": "99LIDCQIICR"
+      "value": "004",
+      "meaning": "4 out of 5",
+      "scheme_designator": "99LIDCQIICR"
     },
     "5": {
-      "CodeValue": "705",
-      "CodeMeaning": "5 out of 5 (Marked spiculation)",
-      "CodingSchemeDesignator": "99LIDCQIICR"
+      "value": "705",
+      "meaning": "5 out of 5 (Marked spiculation)",
+      "scheme_designator": "99LIDCQIICR"
     }
   },
   "texture": {
     "1": {
-      "CodeValue": "RID50153",
-      "CodeMeaning": "non-solid pulmonary nodule",
-      "CodingSchemeDesignator": "RadLex"
+      "value": "RID50153",
+      "meaning": "non-solid pulmonary nodule",
+      "scheme_designator": "RadLex"
     },
     "2": {
-      "CodeValue": "002",
-      "CodeMeaning": "2 out of 5",
-      "CodingSchemeDesignator": "99LIDCQIICR"
+      "value": "002",
+      "meaning": "2 out of 5",
+      "scheme_designator": "99LIDCQIICR"
     },
     "3": {
-      "CodeValue": "RID50152",
-      "CodeMeaning": "part-solid pulmonary nodule",
-      "CodingSchemeDesignator": "RadLex"
+      "value": "RID50152",
+      "meaning": "part-solid pulmonary nodule",
+      "scheme_designator": "RadLex"
     },
     "4": {
-      "CodeValue": "004",
-      "CodeMeaning": "4 out of 5",
-      "CodingSchemeDesignator": "99LIDCQIICR"
+      "value": "004",
+      "meaning": "4 out of 5",
+      "scheme_designator": "99LIDCQIICR"
     },
     "5": {
-      "CodeValue": "RID50151",
-      "CodeMeaning": "solid pulmonary nodule",
-      "CodingSchemeDesignator": "RadLex"
+      "value": "RID50151",
+      "meaning": "solid pulmonary nodule",
+      "scheme_designator": "RadLex"
     }
   },
   "malignancy": {
     "1": {
-      "CodeValue": "901",
-      "CodeMeaning": "1 out of 5 (Highly Unlikely for Cancer)",
-      "CodingSchemeDesignator": "99LIDCQIICR"
+      "value": "901",
+      "meaning": "1 out of 5 (Highly Unlikely for Cancer)",
+      "scheme_designator": "99LIDCQIICR"
     },
     "2": {
-      "CodeValue": "902",
-      "CodeMeaning": "2 out of 5 (Moderately Unlikely for Cancer)",
-      "CodingSchemeDesignator": "99LIDCQIICR"
+      "value": "902",
+      "meaning": "2 out of 5 (Moderately Unlikely for Cancer)",
+      "scheme_designator": "99LIDCQIICR"
     },
     "3": {
-      "CodeValue": "903",
-      "CodeMeaning": "3 out of 5 (Indeterminate Likelihood)",
-      "CodingSchemeDesignator": "99LIDCQIICR"
+      "value": "903",
+      "meaning": "3 out of 5 (Indeterminate Likelihood)",
+      "scheme_designator": "99LIDCQIICR"
     },
     "4": {
-      "CodeValue": "904",
-      "CodeMeaning": "4 out of 5 (Moderately Suspicious for Cancer)",
-      "CodingSchemeDesignator": "99LIDCQIICR"
+      "value": "904",
+      "meaning": "4 out of 5 (Moderately Suspicious for Cancer)",
+      "scheme_designator": "99LIDCQIICR"
     },
     "5": {
-      "CodeValue": "905",
-      "CodeMeaning": "5 out of 5 (Highly Suspicious for Cancer)",
-      "CodingSchemeDesignator": "99LIDCQIICR"
+      "value": "905",
+      "meaning": "5 out of 5 (Highly Suspicious for Cancer)",
+      "scheme_designator": "99LIDCQIICR"
     }
   }
 }

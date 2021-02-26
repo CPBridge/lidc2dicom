@@ -8,7 +8,7 @@ import glob
 import logging
 from decimal import *
 
-from pydicom.sr import coding
+from pydicom.sr.codedict import codes
 from pydicom.uid import generate_uid
 
 from highdicom.version import __version__ as highdicom_version
@@ -16,6 +16,27 @@ from highdicom.content import AlgorithmIdentificationSequence
 from highdicom.seg.content import SegmentDescription
 from highdicom.seg.enum import SegmentAlgorithmTypeValues, SegmentationTypeValues
 from highdicom.seg.sop import Segmentation
+
+from highdicom.sr.content import (
+    FindingSite,
+    ImageRegion3D,
+    SourceImageForMeasurement
+)
+from highdicom.sr.enum import GraphicTypeValues3D
+from highdicom.sr.sop import Comprehensive3DSR
+from highdicom.sr.templates import (
+    DeviceObserverIdentifyingAttributes,
+    Measurement,
+    MeasurementProperties,
+    MeasurementReport,
+    ObservationContext,
+    ObserverContext,
+    PersonObserverIdentifyingAttributes,
+    PlanarROIMeasurementsAndQualitativeEvaluations,
+    TrackingIdentifier,
+)
+from highdicom.sr.value_types import CodedConcept, CodeContentItem
+
 
 class LIDC2DICOMConverter:
 
@@ -73,13 +94,13 @@ class LIDC2DICOMConverter:
     seg_desc = SegmentDescription(
         segment_number=1,
         segment_label=segName,
-        segmented_property_category=coding.Code("M-01000", "SRT", "Morphological Abnormal Structure"),
-        segmented_property_type=coding.Code("M-03010", "SRT", "Nodule"),
+        segmented_property_category=codes.SCT.MorphologicallyAbnormalStructure,
+        segmented_property_type=codes.SCT.Nodule,
         algorithm_type=SegmentAlgorithmTypeValues.MANUAL,
         algorithm_identification=None,  # TODO
         tracking_uid=noduleUID,
         tracking_id=noduleName,
-        anatomic_regions=[coding.Code("T-28000", "SRT", "Lung")],
+        anatomic_regions=[codes.SCT.Lung],
     )
     seg_desc.SegmentDescription = segName  # TODO should this be part of the init?
     seg_desc.RecommendedDisplayCIELabValue = self.colors[aCount + 1]  # TODO should this be part of the init?
@@ -144,89 +165,142 @@ class LIDC2DICOMConverter:
       self.logger.error("Failed to read Segmentation file")
       return
 
-    with open(self.srTemplate,'r') as f:
-      srJSON = json.load(f)
-
     srName = segName+" evaluations"
-    srJSON["SeriesDescription"] = srName
 
     # be explicit about reader being anonymous
-    srJSON["observerContext"] = {}
-    srJSON["observerContext"]["ObserverType"] = "PERSON"
-    srJSON["observerContext"]["PersonObserverName"] = "anonymous"
+    observer_context = ObserverContext(
+        observer_type=codes.DCM.Person,
+        observer_identifying_attributes=PersonObserverIdentifyingAttributes(
+            name='anonymous'
+    )
+    observation_context = ObservationContext(
+        observer_person_context=observer_context
+    )
 
     self.instanceCount = self.instanceCount+1
     if ct_datasets[0].SeriesNumber != '':
-      srJSON["SeriesNumber"] = str(int(ct_datasets[0].SeriesNumber)+self.instanceCount)
+      series_number = str(int(ct_datasets[0].SeriesNumber)+self.instanceCount)
     else:
-      srJSON["SeriesNumber"] = str(self.instanceCount)
+      series_number = str(self.instanceCount)
 
-    srJSON["compositeContext"] = [dcmSegFile.split('/')[-1]]
-    srJSON["imageLibrary"] = os.listdir(seriesDir)
+    #srJSON["compositeContext"] = [dcmSegFile.split('/')[-1]]  # TODO what is this?
+    #srJSON["imageLibrary"] = os.listdir(seriesDir)   # TODO what is this?
 
-    qualitativeEvaluations = []
-    measurementItems = []
-
-    volumeItem = {}
-    volumeItem["value"] = '%E' % Decimal(a.volume)
-    volumeItem["quantity"] = {"CodeValue": "G-D705","CodingSchemeDesignator": "SRT","CodeMeaning": "Volume"}
-    volumeItem["units"] = {"CodeValue": "mm3","CodingSchemeDesignator": "UCUM","CodeMeaning": "cubic millimeter"}
-    volumeItem["measurementModifier"] = {"CodeValue": "122503","CodingSchemeDesignator": "DCM","CodeMeaning": "Integration of sum of closed areas on contiguous slices"}
-    volumeItem["measurementAlgorithmIdentification"] = {"AlgorithmName": "pylidc","AlgorithmVersion": "0.2.0"}
-
-    # CID 7470
-    diameterItem = {}
-    diameterItem["value"] = '%E' % Decimal(a.diameter)
-    diameterItem["quantity"] = {"CodeValue": "M-02550","CodingSchemeDesignator": "SRT","CodeMeaning": "Diameter"}
-    diameterItem["units"] = {"CodeValue": "mm","CodingSchemeDesignator": "UCUM","CodeMeaning": "millimeter"}
-    diameterItem["measurementAlgorithmIdentification"] = {"AlgorithmName": "pylidc","AlgorithmVersion": "0.2.0"}
-
-    #
-    surfaceItem = {}
-    surfaceItem["value"] = '%E' % Decimal(a.surface_area)
-    surfaceItem["quantity"] = {"CodeValue": "C0JK","CodingSchemeDesignator": "IBSI","CodeMeaning": "Surface area of mesh"}
-    surfaceItem["units"] = {"CodeValue": "mm2","CodingSchemeDesignator": "UCUM","CodeMeaning": "square millimeter"}
-    surfaceItem["measurementAlgorithmIdentification"] = {"AlgorithmName": "pylidc","AlgorithmVersion": "0.2.0"}
-
-    measurementItems.append(volumeItem)
-    measurementItems.append(diameterItem)
-    measurementItems.append(surfaceItem)
-
+    qualitative_evaluations = []
     for attribute in self.conceptsDictionary.keys():
-      # print(attribute+': '+str(getattr(a, attribute)))
       try:
-        qItem = {}
-        qItem["conceptCode"] = self.conceptsDictionary[attribute]
-        qItem["conceptValue"] = self.valuesDictionary[attribute][str(getattr(a, attribute))]
         qualitativeEvaluations.append(qItem)
+        qualitative_evaluations.append(
+            CodeContentItem(
+                name=CodedConcept(**self.conceptsDictionary[attribute])
+                value=CodedConcept(**self.valuesDictionary[attribute][str(getattr(a, attribute))])
+            )
+        )
       except KeyError:
         self.logger.info("Skipping invalid attribute: "+attribute+': '+str(getattr(a, attribute)))
         continue
 
-    srJSON["Measurements"][0]["measurementItems"] = measurementItems
-    srJSON["Measurements"][0]["qualitativeEvaluations"] = qualitativeEvaluations
-    srJSON["Measurements"][0]["segmentationSOPInstanceUID"] = segUID
-    srJSON["Measurements"][0]["SourceSeriesForImageSegmentation"] = ctSeriesUID
-
-    srJSON["Measurements"][0]["TrackingIdentifier"] = noduleName
-    srJSON["Measurements"][0]["TrackingUniqueIdentifier"] = noduleUID
-
     srName = "Nodule "+str(nCount+1) +" - Annotation " + a._nodule_id + " measurements"
-    jsonSRFile = os.path.join(self.tempSubjectDir,srName+'.json')
-    with open(jsonSRFile, "w") as f:
-      json.dump(srJSON, f, indent=2)
 
-    dcmSRFile = os.path.join(self.tempSubjectDir,srName+'.dcm')
-    converterCmd = ['tid1500writer', "--inputMetadata", jsonSRFile, "--inputImageLibraryDirectory", seriesDir, "--inputCompositeContextDirectory", self.tempSubjectDir, "--outputDICOM", dcmSRFile]
-    self.logger.info("Converting with "+str(converterCmd))
+    # TODO
+    # Describe the image region for which observations were made
+    # (in physical space based on the frame of reference)
+    #referenced_region = ImageRegion3D(
+    #    graphic_type=GraphicTypeValues3D.POLYGON,
+    #    graphic_data=np.array([
+    #        (165.0, 200.0, 134.0),
+    #        (170.0, 200.0, 134.0),
+    #        (170.0, 220.0, 134.0),
+    #        (165.0, 220.0, 134.0),
+    #        (165.0, 200.0, 134.0),
+    #    ]),
+    #    frame_of_reference_uid=image_dataset.FrameOfReferenceUID
+    #)
 
-    sp = subprocess.Popen(converterCmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    (stdout, stderr) = sp.communicate()
-    self.logger.info("tid1500writer stdout: "+stdout.decode('ascii'))
-    self.logger.warning("tid1500writer stderr: "+stderr.decode('ascii'))
+    # Describe the anatomic site at which observations were made
+    finding_sites = [FindingSite(anatomic_location=codes.SCT.Lung)]
+
+    referenced_segment = ReferencedSegment(
+        sop_class_uid=seg_dcm.SOPClassUID,
+        sop_instance_uid=seg_dcm.SOPInstanceUID,
+        segment_number=1,
+        source_series=ct_datasets[0].SeriesInstanceUID
+    )
+
+    # Describe the imaging measurements for the image region defined above
+    referenced_images = [
+        SourceImageForMeasurement(
+            referenced_sop_class_uid=ds.SOPClassUID,
+            referenced_sop_instance_uid=ds.SOPInstanceUID
+        )
+        for ds in ct_subset
+    ]
+    pylidc_algo_id = AlgorithmIdentification(name='pylidc', version=pylidc.__version__)
+    volume_measurement = Measurement(
+        name=codes.SCT.Volume,
+        tracking_identifier=TrackingIdentifier(uid=generate_uid()),
+        value=a.volume,
+        unit=codes.UCUM.CubicMillimeter,
+        referenced_images=referenced_images,
+        algorithm_id=pylidc_algo_id
+    )
+    diameter_measurement = Measurement(
+        name=codes.SCT.Diameter,
+        tracking_identifier=TrackingIdentifier(uid=generate_uid()),
+        value=a.diameter,
+        unit=codes.UCUM.Millimeter,
+        referenced_images=referenced_imagesm
+        algorithm_id=pylidc_algo_id
+    )
+    surface_area_measurement = Measurement(
+        name=CodedConcept(value='C0JK', scheme_designator='IBSI', meaning="Surface area of mesh"),
+        tracking_identifier=TrackingIdentifier(uid=generate_uid()),
+        value=a.surface_area,
+        unit=codes.UCUM.SquareMillimeter,
+        referenced_images=referenced_imagesm
+        algorithm_id=pylidc_algo_id
+    )
+
+    imaging_measurements = [
+        VolumetricROIMeasurementsAndQualitativeEvaluations(
+            tracking_identifier=TrackingIdentifier(
+                uid=noduleUID,
+                identifier=noduleName
+            ),
+            referenced_region=referenced_region,
+            referenced_segment=referenced_segment,
+            finding_type=codes.SCT.Nodule,
+            measurements=[volume_measurement, diameter_measurement, surface_area_measurement],
+            qualitative_evaluations=qualitative_evaluations
+            finding_sites=finding_sites
+        )
+    ]
+    measurement_report = MeasurementReport(
+        observation_context=observation_context,
+        procedure_reported=codes.LN.CTUnspecifiedBodyRegion,
+        imaging_measurements=imaging_measurements
+    )
+
+    # Create the Structured Report instance
+    sr_dcm = Comprehensive3DSR(
+        evidence=ct_subset,
+        content=measurement_report[0],
+        series_number=series_number,
+        series_instance_uid=generate_uid(),
+        sop_instance_uid=generate_uid(),
+        instance_number=1,
+        manufacturer='highdicom developers'
+        manufacturer_model_name='highdicom',
+        is_complete=True,
+        is_verified=True,
+        series_description=srName
+    )
+
+    sr_dcm.save_as(dcmSRFile)
 
     if not os.path.exists(dcmSRFile):
       self.logger.error("Failed to access output SR file for "+s)
+
 
   def convertForSubject(self, subjectID):
     s = 'LIDC-IDRI-%04i' % subjectID
