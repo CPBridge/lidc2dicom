@@ -25,16 +25,19 @@ from highdicom.sr.content import (
 from highdicom.sr.enum import GraphicTypeValues3D
 from highdicom.sr.sop import Comprehensive3DSR
 from highdicom.sr.templates import (
+    AlgorithmIdentification,
     DeviceObserverIdentifyingAttributes,
     Measurement,
     MeasurementProperties,
     MeasurementReport,
+    ReferencedSegment,
     ObservationContext,
     ObserverContext,
     PersonObserverIdentifyingAttributes,
-    PlanarROIMeasurementsAndQualitativeEvaluations,
+    VolumetricROIMeasurementsAndQualitativeEvaluations,
     TrackingIdentifier,
 )
+from highdicom.sr.content import SourceSeriesForSegmentation
 from highdicom.sr.value_types import CodedConcept, CodeContentItem
 
 
@@ -172,6 +175,7 @@ class LIDC2DICOMConverter:
         observer_type=codes.DCM.Person,
         observer_identifying_attributes=PersonObserverIdentifyingAttributes(
             name='anonymous'
+        )
     )
     observation_context = ObservationContext(
         observer_person_context=observer_context
@@ -189,10 +193,9 @@ class LIDC2DICOMConverter:
     qualitative_evaluations = []
     for attribute in self.conceptsDictionary.keys():
       try:
-        qualitativeEvaluations.append(qItem)
         qualitative_evaluations.append(
             CodeContentItem(
-                name=CodedConcept(**self.conceptsDictionary[attribute])
+                name=CodedConcept(**self.conceptsDictionary[attribute]),
                 value=CodedConcept(**self.valuesDictionary[attribute][str(getattr(a, attribute))])
             )
         )
@@ -224,7 +227,9 @@ class LIDC2DICOMConverter:
         sop_class_uid=seg_dcm.SOPClassUID,
         sop_instance_uid=seg_dcm.SOPInstanceUID,
         segment_number=1,
-        source_series=ct_datasets[0].SeriesInstanceUID
+        source_series=SourceSeriesForSegmentation(
+            ct_datasets[0].SeriesInstanceUID
+        )
     )
 
     # Describe the imaging measurements for the image region defined above
@@ -235,7 +240,7 @@ class LIDC2DICOMConverter:
         )
         for ds in ct_subset
     ]
-    pylidc_algo_id = AlgorithmIdentification(name='pylidc', version=pylidc.__version__)
+    pylidc_algo_id = AlgorithmIdentification(name='pylidc', version=pl.__version__)
     volume_measurement = Measurement(
         name=codes.SCT.Volume,
         tracking_identifier=TrackingIdentifier(uid=generate_uid()),
@@ -249,7 +254,7 @@ class LIDC2DICOMConverter:
         tracking_identifier=TrackingIdentifier(uid=generate_uid()),
         value=a.diameter,
         unit=codes.UCUM.Millimeter,
-        referenced_images=referenced_imagesm
+        referenced_images=referenced_images,
         algorithm_id=pylidc_algo_id
     )
     surface_area_measurement = Measurement(
@@ -257,7 +262,7 @@ class LIDC2DICOMConverter:
         tracking_identifier=TrackingIdentifier(uid=generate_uid()),
         value=a.surface_area,
         unit=codes.UCUM.SquareMillimeter,
-        referenced_images=referenced_imagesm
+        referenced_images=referenced_images,
         algorithm_id=pylidc_algo_id
     )
 
@@ -267,11 +272,11 @@ class LIDC2DICOMConverter:
                 uid=noduleUID,
                 identifier=noduleName
             ),
-            referenced_region=referenced_region,
+            #referenced_region=referenced_region, # TODO
             referenced_segment=referenced_segment,
             finding_type=codes.SCT.Nodule,
             measurements=[volume_measurement, diameter_measurement, surface_area_measurement],
-            qualitative_evaluations=qualitative_evaluations
+            qualitative_evaluations=qualitative_evaluations,
             finding_sites=finding_sites
         )
     ]
@@ -289,7 +294,7 @@ class LIDC2DICOMConverter:
         series_instance_uid=generate_uid(),
         sop_instance_uid=generate_uid(),
         instance_number=1,
-        manufacturer='highdicom developers'
+        manufacturer='highdicom developers',
         manufacturer_model_name='highdicom',
         is_complete=True,
         is_verified=True,
