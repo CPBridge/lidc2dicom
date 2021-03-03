@@ -94,6 +94,9 @@ class LIDC2DICOMConverter:
     noduleName = "Nodule "+str(nCount+1)
     segName = "Nodule "+str(nCount+1) +" - Annotation " + a._nodule_id
 
+    # Identify pylidc as the "algorithm" creating the annotations
+    pylidc_algo_id = AlgorithmIdentification(name='pylidc', version=pl.__version__)
+
     seg_desc = SegmentDescription(
         segment_number=1,
         segment_label=segName,
@@ -150,8 +153,8 @@ class LIDC2DICOMConverter:
 
     # Add in some extra information
     seg_dcm.BodyPartExamined = "Lung"
-    seg_dcm.ClincalTrialSeriesID = "Session1"
-    seg_dcm.ClincalTrialTimePointID = "1"
+    seg_dcm.ClinicalTrialSeriesID = "Session1"
+    seg_dcm.ClinicalTrialTimePointID = "1"
     seg_dcm.ClinicalTrialCoordinatingCenterName = "TCIA"
     seg_dcm.ContentLabel = "SEGMENTATION"
 
@@ -187,9 +190,6 @@ class LIDC2DICOMConverter:
     else:
       series_number = str(self.instanceCount)
 
-    #srJSON["compositeContext"] = [dcmSegFile.split('/')[-1]]  # TODO what is this?
-    #srJSON["imageLibrary"] = os.listdir(seriesDir)   # TODO what is this?
-
     qualitative_evaluations = []
     for attribute in self.conceptsDictionary.keys():
       try:
@@ -204,21 +204,6 @@ class LIDC2DICOMConverter:
         continue
 
     srName = "Nodule "+str(nCount+1) +" - Annotation " + a._nodule_id + " measurements"
-
-    # TODO
-    # Describe the image region for which observations were made
-    # (in physical space based on the frame of reference)
-    #referenced_region = ImageRegion3D(
-    #    graphic_type=GraphicTypeValues3D.POLYGON,
-    #    graphic_data=np.array([
-    #        (165.0, 200.0, 134.0),
-    #        (170.0, 200.0, 134.0),
-    #        (170.0, 220.0, 134.0),
-    #        (165.0, 220.0, 134.0),
-    #        (165.0, 200.0, 134.0),
-    #    ]),
-    #    frame_of_reference_uid=image_dataset.FrameOfReferenceUID
-    #)
 
     # Describe the anatomic site at which observations were made
     finding_sites = [FindingSite(anatomic_location=codes.SCT.Lung)]
@@ -240,7 +225,6 @@ class LIDC2DICOMConverter:
         )
         for ds in ct_subset
     ]
-    pylidc_algo_id = AlgorithmIdentification(name='pylidc', version=pl.__version__)
     volume_measurement = Measurement(
         name=codes.SCT.Volume,
         tracking_identifier=TrackingIdentifier(uid=generate_uid()),
@@ -272,7 +256,6 @@ class LIDC2DICOMConverter:
                 uid=noduleUID,
                 identifier=noduleName
             ),
-            #referenced_region=referenced_region, # TODO
             referenced_segment=referenced_segment,
             finding_type=codes.SCT.Nodule,
             measurements=[volume_measurement, diameter_measurement, surface_area_measurement],
@@ -295,12 +278,14 @@ class LIDC2DICOMConverter:
         sop_instance_uid=generate_uid(),
         instance_number=1,
         manufacturer='highdicom developers',
-        manufacturer_model_name='highdicom',
         is_complete=True,
         is_verified=True,
+        verifying_observer_name='anonymous',
+        verifying_organization='anonymous',
         series_description=srName
     )
 
+    dcmSRFile = os.path.join(self.tempSubjectDir, srName + '.dcm')
     sr_dcm.save_as(dcmSRFile)
 
     if not os.path.exists(dcmSRFile):
