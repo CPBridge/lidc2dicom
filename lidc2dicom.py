@@ -93,7 +93,7 @@ class LIDC2DICOMConverter:
             segmented_property_category=codes.SCT.MorphologicallyAbnormalStructure,
             segmented_property_type=codes.SCT.Nodule,
             algorithm_type=SegmentAlgorithmTypeValues.MANUAL,
-            algorithm_identification=None,
+            algorithm_identification=pylidc_algo_id,
             tracking_uid=nodule_uid,
             tracking_id=nodule_name,
             anatomic_regions=[codes.SCT.Lung],
@@ -280,8 +280,8 @@ class LIDC2DICOMConverter:
             self.logger.error("Failed to access output SR file for " + s)
 
 
-    def convert_for_subject(self, subjectID):
-        s = 'LIDC-IDRI-%04i' % subjectID
+    def convert_for_subject(self, subject_id: int, composite: bool = False):
+        s = 'LIDC-IDRI-%04i' % subject_id
         self.logger.info("Processing subject %s" % (s))
         scans = pl.query(pl.Scan).filter(pl.Scan.patient_id == s)
         self.logger.info(" Found %d scans" % (scans.count()))
@@ -307,36 +307,39 @@ class LIDC2DICOMConverter:
             self.temp_subject_dir = os.path.join(self.output_dir, s, study_uid, series_uid)
             os.makedirs(self.temp_subject_dir, exist_ok=True)
 
-            # now iterate over all nodules available for this subject
-            anns = scan.annotations
-            self.logger.info("Have %d annotations for subject %s" % (len(anns), s))
+            if composite:
+                convert_for_scan_composite(scan, ct_datasets, series_dir)
+            else:
+                convert_for_scan(scan, ct_datasets, series_dir)
 
-            self.instance_count = 0
+    def convert_for_scan(self, scan: pl.Scan, ct_datasets: Sequence[pydicom.Dataset], series_dir: str):
 
-            clustered_annotation_ids = []
+        # now iterate over all nodules available for this subject
+        anns = scan.annotations
+        self.logger.info("Have %d annotations for subject %s" % (len(anns), s))
 
-            for n_count, nodule in enumerate(scan.cluster_annotations()):
-                nodule_uid = pydicom.uid.generate_uid(prefix=None) # by default, pydicom uses 2.25 root
+        self.instance_count = 0
 
-                for a_count, a in enumerate(nodule):
-                    clustered_annotation_ids.append(a.id)
-                    self.convert_single_annotation(n_count, a_count, a, ct_datasets, nodule_uid, series_dir, scan)
+        clustered_annotation_ids = []
 
-            if len(clustered_annotation_ids) != len(anns):
-                self.logger.warning("%d annotations unaccounted for!" % (len(anns) - len(clustered_annotation_ids)))
+        for n_count, nodule in enumerate(scan.cluster_annotations()):
+            nodule_uid = pydicom.uid.generate_uid(prefix=None) # by default, pydicom uses 2.25 root
 
-            for ua in anns:
-                if ua.id not in clustered_annotation_ids:
-                    a_count = a_count + 1
-                    n_count = n_count + 1
-                    nodule_uid = pydicom.uid.generate_uid(prefix=None)
-                    self.convert_single_annotation(n_count, a_count, ua, ct_datasets, nodule_uid, series_dir, scan)
+            for a_count, a in enumerate(nodule):
+                clustered_annotation_ids.append(a.id)
+                self.convert_single_annotation(n_count, a_count, a, ct_datasets, nodule_uid, series_dir, scan)
 
-    def make_composite_objects(self,
-                               scan: pl.Scan,
-                               ct_datasets: Sequence[pydicom.Dataset],
-                               series_dir: str
-                              ):
+        if len(clustered_annotation_ids) != len(anns):
+            self.logger.warning("%d annotations unaccounted for!" % (len(anns) - len(clustered_annotation_ids)))
+
+        for ua in anns:
+            if ua.id not in clustered_annotation_ids:
+                a_count = a_count + 1
+                n_count = n_count + 1
+                nodule_uid = pydicom.uid.generate_uid(prefix=None)
+                self.convert_single_annotation(n_count, a_count, ua, ct_datasets, nodule_uid, series_dir, scan)
+
+    def convert_for_scan_composite(self, scan: pl.Scan, ct_datasets: Sequence[pydicom.Dataset], series_dir: str):
 
         # Identify pylidc as the "algorithm" creating the annotations
         pylidc_algo_id = AlgorithmIdentification(name='pylidc', version=pl.__version__)
@@ -362,7 +365,7 @@ class LIDC2DICOMConverter:
                     segmented_property_category=codes.SCT.MorphologicallyAbnormalStructure,
                     segmented_property_type=codes.SCT.Nodule,
                     algorithm_type=SegmentAlgorithmTypeValues.MANUAL,
-                    algorithm_identification=None,
+                    algorithm_identification=pylidc_algo_id,
                     tracking_uid=nodule_uid,
                     tracking_id=nodule_name,
                     anatomic_regions=[codes.SCT.Lung],
@@ -411,7 +414,7 @@ class LIDC2DICOMConverter:
         # Save the file
         seg_dcm.save_as(dcm_seg_file)
 
-    def make_composite_objects_old(self, subjectID):
+    def make_composite_objects_old(self, subject_id):
 
         # convert all segmentations and measurements into composite objects
         # 1. find all segmentations
@@ -419,7 +422,7 @@ class LIDC2DICOMConverter:
         # 3. find all measurements
         # 4. read all, append metadata
         import re
-        s = 'LIDC-IDRI-%04i' % subjectID
+        s = 'LIDC-IDRI-%04i' % subject_id
         self.logger.info("Making composite objects for " + s)
 
         scans = pl.query(pl.Scan).filter(pl.Scan.patient_id == s)
@@ -625,23 +628,17 @@ def main():
     if args.subject_ids:
         logger.info(f"Processing subjects {args.subject_ids}")
         for s in args.subject_ids:
-            converter.convert_for_subject(s)
-            if args.composite:
-                converter.make_composite_objects(s)
+            converter.convert_for_subject(s, composite=args.composite)
     elif args.subject_range is not None and len(args.subject_range):
         logger.info(f"Processing subjects from {args.subject_range[0]} to {args.subject_range[1]} inclusive")
         if args.subject_range[1] < args.subject_range[0]:
             logger.error("Invalid range.")
         for s in range(args.subject_range[0], args.subject_range[1] + 1, 1):
-            converter.convert_for_subject(s)
-            if args.composite:
-                converter.make_composite_objects(s)
+            converter.convert_for_subject(s, composite=args.composite)
     elif args.all_subjects:
         logging.info("Processing all subjects from 1 to 1012.")
         for s in range(1, 1013, 1):
-            converter.convert_for_subject(s)
-            if args.composite:
-                converter.make_composite_objects(s)
+            converter.convert_for_subject(s, composite=args.composite)
 
 if __name__ == "__main__":
     main()
