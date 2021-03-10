@@ -308,9 +308,9 @@ class LIDC2DICOMConverter:
             os.makedirs(self.temp_subject_dir, exist_ok=True)
 
             if composite:
-                convert_for_scan_composite(scan, ct_datasets, series_dir)
+                self.convert_for_scan_composite(scan, ct_datasets, series_dir)
             else:
-                convert_for_scan(scan, ct_datasets, series_dir)
+                self.convert_for_scan(scan, ct_datasets, series_dir)
 
     def convert_for_scan(self, scan: pl.Scan, ct_datasets: Sequence[pydicom.Dataset], series_dir: str):
 
