@@ -6,6 +6,7 @@ import pylidc as pl
 import numpy as np
 import glob
 import logging
+from typing import Sequence
 from decimal import *
 
 from pydicom.sr.codedict import codes
@@ -71,9 +72,15 @@ class LIDC2DICOMConverter:
         for p in Path(dir).glob("*.nrrd"):
             p.unlink()
 
-    def convert_single_annotation(self, n_count, a_count, a, ct_datasets, nodule_uid, series_dir, scan):
+    def convert_single_annotation(self,
+                                  n_count: int,
+                                  a_count: int,
+                                  a: pl.Annotation,
+                                  ct_datasets: Sequence[pydicom.Dataset],
+                                  nodule_uid: str,
+                                  series_dir: str,
+                                  scan: pl.Scan):
 
-        # update as necessary!
         nodule_name = f"Nodule {n_count + 1}"
         seg_name = f"Nodule {n_count + 1} - Annotation {a._nodule_id}"
 
@@ -104,7 +111,7 @@ class LIDC2DICOMConverter:
 
         self.logger.info("Converting to DICOM SEG")
 
-        # Construct an enpty mask the same size as the input series
+        # Construct an empty mask the same size as the input series
         image_size = (ct_datasets[0].Rows, ct_datasets[0].Columns, len(ct_datasets))
         mask = np.zeros(image_size, np.uint8)
 
@@ -325,7 +332,86 @@ class LIDC2DICOMConverter:
                     nodule_uid = pydicom.uid.generate_uid(prefix=None)
                     self.convert_single_annotation(n_count, a_count, ua, ct_datasets, nodule_uid, series_dir, scan)
 
-    def make_composite_objects(self, subjectID):
+    def make_composite_objects(self,
+                               scan: pl.Scan,
+                               ct_datasets: Sequence[pydicom.Dataset],
+                               series_dir: str
+                              ):
+
+        # Identify pylidc as the "algorithm" creating the annotations
+        pylidc_algo_id = AlgorithmIdentification(name='pylidc', version=pl.__version__)
+
+        image_size = (ct_datasets[0].Rows, ct_datasets[0].Columns, len(ct_datasets))
+
+        series_num = 1000
+        dcm_seg_file = os.path.join(self.temp_subject_dir, 'all_segmentations.dcm')
+
+        total_ind = 0
+        seg_descriptions = []
+        seg_masks = []
+        for n_count, nodule in enumerate(scan.cluster_annotations()):
+            nodule_uid = pydicom.uid.generate_uid(prefix=None) # by default, pydicom uses 2.25 root
+
+            for a_count, a in enumerate(nodule):
+
+                seg_name = f"Nodule {n_count + 1} - Annotation {a._nodule_id}"
+
+                seg_desc = SegmentDescription(
+                    segment_number=total_ind,
+                    segment_label=seg_name,
+                    segmented_property_category=codes.SCT.MorphologicallyAbnormalStructure,
+                    segmented_property_type=codes.SCT.Nodule,
+                    algorithm_type=SegmentAlgorithmTypeValues.MANUAL,
+                    algorithm_identification=None,
+                    tracking_uid=nodule_uid,
+                    tracking_id=nodule_name,
+                    anatomic_regions=[codes.SCT.Lung],
+                )
+                seg_desc.SegmentDescription = seg_name
+                seg_desc.RecommendedDisplayCIELabValue = self.colors[total_ind + 1]
+
+                # Construct an empty mask the same size as the input series
+                mask = np.zeros(image_size, np.uint8)
+
+                # Fill in the mask elements with the segmentation
+                mask[a.bbox()] = a.boolean_mask().astype(np.int8)
+
+                if total_ind == 0:
+                    # Need to create the segmentation object
+                    seg_dcm = Segmentation(
+                        source_images=ct_datasets,
+                        pixel_array=mask,
+                        segmentation_type=SegmentationTypeValues.BINARY,
+                        segment_descriptions=[seg_desc],
+                        series_instance_uid=generate_uid(),
+                        series_number=series_num,
+                        sop_instance_uid=generate_uid(),
+                        instance_number=1,
+                        manufacturer="highdicom developers",
+                        manufacturer_model_name="highdicom",
+                        software_versions=f"{highdicom_version}",
+                        device_serial_number='1',
+                        content_description="Lung nodule segmentation",
+                        content_creator_name="Reader1",
+                        series_description=f"Segmentation of {seg_name}"
+                    )
+                else:
+                    # Add new segment to the existing object
+                    seg_dcm.add_segments(mask, [seg_desc])
+
+                total_ind = total_ind + 1
+
+        # Add in some extra information
+        seg_dcm.BodyPartExamined = "Lung"
+        seg_dcm.ClinicalTrialSeriesID = "Session1"
+        seg_dcm.ClinicalTrialTimePointID = "1"
+        seg_dcm.ClinicalTrialCoordinatingCenterName = "TCIA"
+        seg_dcm.ContentLabel = "SEGMENTATION"
+
+        # Save the file
+        seg_dcm.save_as(dcm_seg_file)
+
+    def make_composite_objects_old(self, subjectID):
 
         # convert all segmentations and measurements into composite objects
         # 1. find all segmentations
