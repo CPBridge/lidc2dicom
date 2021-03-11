@@ -86,6 +86,11 @@ class LIDC2DICOMConverter:
 
         # Identify pylidc as the "algorithm" creating the annotations
         pylidc_algo_id = AlgorithmIdentification(name='pylidc', version=pl.__version__)
+        pylidc_algo_id_seq = AlgorithmIdentificationSequence(
+            name='pylidc',
+            family=codes.cid7162.ManualProcessing,
+            version=pl.__version__
+        )
 
         seg_desc = SegmentDescription(
             segment_number=1,
@@ -93,7 +98,7 @@ class LIDC2DICOMConverter:
             segmented_property_category=codes.SCT.MorphologicallyAbnormalStructure,
             segmented_property_type=codes.SCT.Nodule,
             algorithm_type=SegmentAlgorithmTypeValues.MANUAL,
-            algorithm_identification=pylidc_algo_id,
+            algorithm_identification=pylidc_algo_id_seq,
             tracking_uid=nodule_uid,
             tracking_id=nodule_name,
             anatomic_regions=[codes.SCT.Lung],
@@ -316,7 +321,7 @@ class LIDC2DICOMConverter:
 
         # now iterate over all nodules available for this subject
         anns = scan.annotations
-        self.logger.info("Have %d annotations for subject %s" % (len(anns), s))
+        self.logger.info("Have %d annotations for subject %s" % (len(anns), scan.patient_id))
 
         self.instance_count = 0
 
@@ -343,6 +348,11 @@ class LIDC2DICOMConverter:
 
         # Identify pylidc as the "algorithm" creating the annotations
         pylidc_algo_id = AlgorithmIdentification(name='pylidc', version=pl.__version__)
+        pylidc_algo_id_seq = AlgorithmIdentificationSequence(
+            name='pylidc',
+            family=codes.cid7162.ManualProcessing,
+            version=pl.__version__
+        )
 
         image_size = (ct_datasets[0].Rows, ct_datasets[0].Columns, len(ct_datasets))
 
@@ -354,6 +364,7 @@ class LIDC2DICOMConverter:
         seg_masks = []
         for n_count, nodule in enumerate(scan.cluster_annotations()):
             nodule_uid = pydicom.uid.generate_uid(prefix=None) # by default, pydicom uses 2.25 root
+            nodule_name = f"Nodule {n_count + 1}"
 
             for a_count, a in enumerate(nodule):
 
@@ -365,7 +376,7 @@ class LIDC2DICOMConverter:
                     segmented_property_category=codes.SCT.MorphologicallyAbnormalStructure,
                     segmented_property_type=codes.SCT.Nodule,
                     algorithm_type=SegmentAlgorithmTypeValues.MANUAL,
-                    algorithm_identification=pylidc_algo_id,
+                    algorithm_identification=pylidc_algo_id_seq,
                     tracking_uid=nodule_uid,
                     tracking_id=nodule_name,
                     anatomic_regions=[codes.SCT.Lung],
@@ -378,6 +389,7 @@ class LIDC2DICOMConverter:
 
                 # Fill in the mask elements with the segmentation
                 mask[a.bbox()] = a.boolean_mask().astype(np.int8)
+                mask = np.moveaxis(mask, 2, 0)
 
                 if total_ind == 0:
                     # Need to create the segmentation object
