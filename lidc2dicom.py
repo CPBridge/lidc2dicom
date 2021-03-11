@@ -1,14 +1,14 @@
 from pathlib import Path
-import lidc_conversion_utils.helpers as lidc_helpers
-import os, itk, tempfile, json, pydicom, tempfile, shutil, sys
-import subprocess
+import logging
+from typing import List
+import os
+import json
+import sys
+
 import pylidc as pl
 import numpy as np
-import glob
-import logging
-from typing import Sequence
-from decimal import *
 
+from pydicom import Dataset
 from pydicom.sr.codedict import codes
 from pydicom.uid import generate_uid
 
@@ -20,16 +20,12 @@ from highdicom.seg.sop import Segmentation
 
 from highdicom.sr.content import (
     FindingSite,
-    ImageRegion3D,
     SourceImageForMeasurement
 )
-from highdicom.sr.enum import GraphicTypeValues3D
 from highdicom.sr.sop import Comprehensive3DSR
 from highdicom.sr.templates import (
     AlgorithmIdentification,
-    DeviceObserverIdentifyingAttributes,
     Measurement,
-    MeasurementProperties,
     MeasurementReport,
     ReferencedSegment,
     ObservationContext,
@@ -41,6 +37,8 @@ from highdicom.sr.templates import (
 from highdicom.sr.content import SourceSeriesForSegmentation
 from highdicom.sr.value_types import CodedConcept, CodeContentItem
 
+import lidc_conversion_utils.helpers as lidc_helpers
+
 
 class LIDC2DICOMConverter:
 
@@ -48,14 +46,13 @@ class LIDC2DICOMConverter:
         self.logger = logging.getLogger("lidc2dicom")
 
         self.args = args
-        self.output_dir= args.output_dir
+        self.output_dir = args.output_dir
 
-        self.sr_template = "sr_conversion_template.json"
         self.colors_file = "GenericColors.txt"
 
         # read GenericColors
         self.colors = []
-        with open(self.colors_file,'r') as f:
+        with open(self.colors_file, 'r') as f:
             for l in f:
                 if l.startswith('#'):
                     continue
@@ -68,32 +65,24 @@ class LIDC2DICOMConverter:
         with open("values_dict.json") as vf:
             self.values_dictionary = json.load(vf)
 
-    def clean_up_temp_dir(self, dir):
-        for p in Path(dir).glob("*.nrrd"):
-            p.unlink()
+        self.series_count = 1000
 
-    def convert_single_annotation(self,
-                                  n_count: int,
-                                  a_count: int,
-                                  a: pl.Annotation,
-                                  ct_datasets: Sequence[pydicom.Dataset],
-                                  nodule_uid: str,
-                                  series_dir: str,
-                                  scan: pl.Scan):
-
-        nodule_name = f"Nodule {n_count + 1}"
-        seg_name = f"Nodule {n_count + 1} - Annotation {a._nodule_id}"
-
-        # Identify pylidc as the "algorithm" creating the annotations
-        pylidc_algo_id = AlgorithmIdentification(name='pylidc', version=pl.__version__)
+    def get_segment_description(self,
+                                segment_number: int,
+                                nodule_name: str,
+                                seg_name: str,
+                                nodule_uid: str,
+                                display_color: List[int]):
+        # Description of pylidc as the "algorithm" creating the segmentation
         pylidc_algo_id_seq = AlgorithmIdentificationSequence(
             name='pylidc',
             family=codes.cid7162.ManualProcessing,
             version=pl.__version__
         )
 
+        # Descriptive information about this segment
         seg_desc = SegmentDescription(
-            segment_number=1,
+            segment_number=segment_number,
             segment_label=seg_name,
             segmented_property_category=codes.SCT.MorphologicallyAbnormalStructure,
             segmented_property_type=codes.SCT.Nodule,
@@ -104,37 +93,23 @@ class LIDC2DICOMConverter:
             anatomic_regions=[codes.SCT.Lung],
         )
         seg_desc.SegmentDescription = seg_name
-        seg_desc.RecommendedDisplayCIELabValue = self.colors[a_count + 1]
+        seg_desc.RecommendedDisplayCIELabValue = display_color
 
-        self.instance_count = self.instance_count + 1
-        if ct_datasets[0].SeriesNumber != '':
-            series_num = int(ct_datasets[0].SeriesNumber) + self.instance_count
-        else:
-            series_num = self.instance_count
+        return seg_desc
 
-        dcm_seg_file = os.path.join(self.temp_subject_dir, seg_name + '.dcm')
-
-        self.logger.info("Converting to DICOM SEG")
-
-        # Construct an empty mask the same size as the input series
-        image_size = (ct_datasets[0].Rows, ct_datasets[0].Columns, len(ct_datasets))
-        mask = np.zeros(image_size, np.uint8)
-
-        # Fill in the mask elements with the segmentation
-        mask[a.bbox()] = a.boolean_mask().astype(np.int8)
-
-        # Find the subset of the source images relevant for the segmentation
-        ct_subset = ct_datasets[a.bbox()[2]]
-        mask_subset = mask[(slice(None), slice(None), a.bbox()[2])]
-        mask_subset = np.moveaxis(mask_subset, 2, 0)
-
+    def get_segmentation_dataset(self,
+                                 ct_datasets: List[Dataset],
+                                 pixel_array: np.ndarray,
+                                 seg_descs: List[SegmentDescription],
+                                 series_number: int,
+                                 series_description: str):
         seg_dcm = Segmentation(
-            source_images=ct_subset,
-            pixel_array=mask_subset,
+            source_images=ct_datasets,
+            pixel_array=pixel_array,
             segmentation_type=SegmentationTypeValues.BINARY,
-            segment_descriptions=[seg_desc],
+            segment_descriptions=seg_descs,
             series_instance_uid=generate_uid(),
-            series_number=series_num,
+            series_number=series_number,
             sop_instance_uid=generate_uid(),
             instance_number=1,
             manufacturer="highdicom developers",
@@ -142,8 +117,8 @@ class LIDC2DICOMConverter:
             software_versions=f"{highdicom_version}",
             device_serial_number='1',
             content_description="Lung nodule segmentation",
-            content_creator_name="Reader1",
-            series_description=f"Segmentation of {seg_name}"
+            content_creator_name="Anonymous Reader",
+            series_description=series_description
         )
 
         # Add in some extra information
@@ -153,50 +128,19 @@ class LIDC2DICOMConverter:
         seg_dcm.ClinicalTrialCoordinatingCenterName = "TCIA"
         seg_dcm.ContentLabel = "SEGMENTATION"
 
-        # Save the file
-        seg_dcm.save_as(dcm_seg_file)
+        return seg_dcm
 
-        seg_uid = None
-        try:
-            seg_dcm = pydicom.read_file(dcm_seg_file)
-            seg_uid = seg_dcm.SOPInstanceUID
-        except:
-            self.logger.error("Failed to read Segmentation file")
-            return
+    def get_roi_measurements_and_evaluations(self,
+                                             ann: pl.Annotation,
+                                             ct_datasets: List[Dataset],
+                                             seg_dcm: Dataset,
+                                             segment_number: int,
+                                             nodule_uid: str,
+                                             nodule_name: str):
+        # Get measurements from a single annotation and encode in a TID 1411 report
 
-        sr_name = seg_name + " evaluations"
-
-        # be explicit about reader being anonymous
-        observer_context = ObserverContext(
-            observer_type=codes.DCM.Person,
-            observer_identifying_attributes=PersonObserverIdentifyingAttributes(
-                name='anonymous'
-            )
-        )
-        observation_context = ObservationContext(
-            observer_person_context=observer_context
-        )
-
-        self.instance_count = self.instance_count + 1
-        if ct_datasets[0].SeriesNumber != '':
-            series_number = str(int(ct_datasets[0].SeriesNumber) + self.instance_count)
-        else:
-            series_number = str(self.instance_count)
-
-        qualitative_evaluations = []
-        for attribute in self.concepts_dictionary.keys():
-            try:
-                qualitative_evaluations.append(
-                    CodeContentItem(
-                        name=CodedConcept(**self.concepts_dictionary[attribute]),
-                        value=CodedConcept(**self.values_dictionary[attribute][str(getattr(a, attribute))])
-                    )
-                )
-            except KeyError:
-                self.logger.info(f"Skipping invalid attribute: {attribute} {getattr(a, attribute)}")
-                continue
-
-        sr_name = f"Nodule {n_count + 1} - Annotation {a._nodule_id} measurements"
+        # Identify pylidc as the "algorithm" creating the annotations
+        pylidc_algo_id = AlgorithmIdentification(name='pylidc', version=pl.__version__)
 
         # Describe the anatomic site at which observations were made
         finding_sites = [FindingSite(anatomic_location=codes.SCT.Lung)]
@@ -216,55 +160,90 @@ class LIDC2DICOMConverter:
                 referenced_sop_class_uid=ds.SOPClassUID,
                 referenced_sop_instance_uid=ds.SOPInstanceUID
             )
-            for ds in ct_subset
+            for ds in ct_datasets
         ]
+        # Volume measurement
         volume_measurement = Measurement(
             name=codes.SCT.Volume,
             tracking_identifier=TrackingIdentifier(uid=generate_uid()),
-            value=a.volume,
+            value=ann.volume,
             unit=codes.UCUM.CubicMillimeter,
             referenced_images=referenced_images,
             algorithm_id=pylidc_algo_id
         )
+        # Diameter measurement
         diameter_measurement = Measurement(
             name=codes.SCT.Diameter,
             tracking_identifier=TrackingIdentifier(uid=generate_uid()),
-            value=a.diameter,
+            value=ann.diameter,
             unit=codes.UCUM.Millimeter,
             referenced_images=referenced_images,
             algorithm_id=pylidc_algo_id
         )
+        # Surface area measurement
         surface_area_measurement = Measurement(
             name=CodedConcept(value='C0JK', scheme_designator='IBSI', meaning="Surface area of mesh"),
             tracking_identifier=TrackingIdentifier(uid=generate_uid()),
-            value=a.surface_area,
+            value=ann.surface_area,
             unit=codes.UCUM.SquareMillimeter,
             referenced_images=referenced_images,
             algorithm_id=pylidc_algo_id
         )
 
-        imaging_measurements = [
-            VolumetricROIMeasurementsAndQualitativeEvaluations(
-                tracking_identifier=TrackingIdentifier(
-                    uid=nodule_uid,
-                    identifier=nodule_name
-                ),
-                referenced_segment=referenced_segment,
-                finding_type=codes.SCT.Nodule,
-                measurements=[volume_measurement, diameter_measurement, surface_area_measurement],
-                qualitative_evaluations=qualitative_evaluations,
-                finding_sites=finding_sites
+        # Qualitative evaluations
+        qualitative_evaluations = []
+        for attribute in self.concepts_dictionary.keys():
+            try:
+                qualitative_evaluations.append(
+                    CodeContentItem(
+                        name=CodedConcept(**self.concepts_dictionary[attribute]),
+                        value=CodedConcept(**self.values_dictionary[attribute][str(getattr(ann, attribute))])
+                    )
+                )
+            except KeyError:
+                self.logger.info(f"Skipping invalid attribute: {attribute} {getattr(ann, attribute)}")
+                continue
+
+        # Compile into TID1411
+        roi_measurements = VolumetricROIMeasurementsAndQualitativeEvaluations(
+            tracking_identifier=TrackingIdentifier(
+                uid=nodule_uid,
+                identifier=nodule_name
+            ),
+            referenced_segment=referenced_segment,
+            finding_type=codes.SCT.Nodule,
+            measurements=[volume_measurement, diameter_measurement, surface_area_measurement],
+            qualitative_evaluations=qualitative_evaluations,
+            finding_sites=finding_sites
+        )
+
+        return roi_measurements
+
+    def get_sr_dataset(self,
+                       roi_measurements: List[VolumetricROIMeasurementsAndQualitativeEvaluations],
+                       ct_datasets: List[Dataset],
+                       series_number: int,
+                       series_description: str):
+        # Be explicit about reader being anonymous
+        observer_context = ObserverContext(
+            observer_type=codes.DCM.Person,
+            observer_identifying_attributes=PersonObserverIdentifyingAttributes(
+                name='anonymous'
             )
-        ]
+        )
+        observation_context = ObservationContext(
+            observer_person_context=observer_context
+        )
+
         measurement_report = MeasurementReport(
             observation_context=observation_context,
             procedure_reported=codes.LN.CTUnspecifiedBodyRegion,
-            imaging_measurements=imaging_measurements
+            imaging_measurements=roi_measurements
         )
 
         # Create the Structured Report instance
         sr_dcm = Comprehensive3DSR(
-            evidence=ct_subset,
+            evidence=ct_datasets,
             content=measurement_report[0],
             series_number=series_number,
             series_instance_uid=generate_uid(),
@@ -275,15 +254,85 @@ class LIDC2DICOMConverter:
             is_verified=True,
             verifying_observer_name='anonymous',
             verifying_organization='anonymous',
+            series_description=series_description
+        )
+
+        return sr_dcm
+
+    def convert_single_annotation(self,
+                                  n_count: int,
+                                  a_count: int,
+                                  a: pl.Annotation,
+                                  ct_datasets: List[Dataset],
+                                  nodule_uid: str,
+                                  series_dir: str,
+                                  scan: pl.Scan):
+
+        nodule_name = f"Nodule {n_count + 1}"
+        seg_name = f"Nodule {n_count + 1} - Annotation {a._nodule_id}"
+
+        # Choose series numbers for the new series and increment the counter
+        seg_series_number = self.series_count
+        sr_series_number = self.series_count + 1
+        self.series_count += 2
+
+        self.logger.info("Creating DICOM SEG")
+
+        # Construct an empty mask the same size as the input series
+        image_size = (ct_datasets[0].Rows, ct_datasets[0].Columns, len(ct_datasets))
+        mask = np.zeros(image_size, np.uint8)
+
+        # Fill in the mask elements with the segmentation
+        mask[a.bbox()] = a.boolean_mask().astype(np.int8)
+
+        # Find the subset of the source images relevant for the segmentation
+        ct_subset = ct_datasets[a.bbox()[2]]
+        mask_subset = mask[(slice(None), slice(None), a.bbox()[2])]
+        mask_subset = np.moveaxis(mask_subset, 2, 0)
+
+        seg_desc = self.get_segment_description(
+            segment_number=1,
+            nodule_name=nodule_name,
+            seg_name=seg_name,
+            nodule_uid=nodule_uid,
+            display_color=self.colors[a_count + 1]
+        )
+
+        seg_dcm = self.get_segmentation_dataset(
+            ct_datasets=ct_subset,
+            pixel_array=mask_subset,
+            seg_descs=[seg_desc],
+            series_number=seg_series_number,
+            series_description=f"Segmentation of {seg_name}"
+        )
+
+        # Save the file
+        dcm_seg_file = os.path.join(self.subject_dir, seg_name + '.dcm')
+        seg_dcm.save_as(dcm_seg_file)
+
+        self.logger.info("Creating DICOM SR")
+
+        sr_name = f"Nodule {n_count + 1} - Annotation {a._nodule_id} measurements"
+
+        roi_measurements = self.get_roi_measurements_and_evaluations(
+            ann=a,
+            ct_datasets=ct_subset,
+            seg_dcm=seg_dcm,
+            segment_number=1,
+            nodule_uid=nodule_uid,
+            nodule_name=nodule_name
+        )
+
+        sr_dcm = self.get_sr_dataset(
+            roi_measurements=[roi_measurements],
+            ct_datasets=ct_subset,
+            series_number=sr_series_number,
             series_description=sr_name
         )
 
-        dcm_sr_file = os.path.join(self.temp_subject_dir, sr_name + '.dcm')
+        # Save the file
+        dcm_sr_file = os.path.join(self.subject_dir, sr_name + '.dcm')
         sr_dcm.save_as(dcm_sr_file)
-
-        if not os.path.exists(dcm_sr_file):
-            self.logger.error("Failed to access output SR file for " + s)
-
 
     def convert_for_subject(self, subject_id: int, composite: bool = False):
         s = 'LIDC-IDRI-%04i' % subject_id
@@ -299,36 +348,39 @@ class LIDC2DICOMConverter:
                 self.logger.error("Files not found for subject " + s)
                 return
 
+            # Reset the series counter (used to number new series)
+            self.series_count = 100
+
             try:
                 ct_datasets = scan.load_all_dicom_images()
-            except:
-                logger.error("Failed to read input CT files")
+            except Exception:
+                self.logger.error("Failed to read input CT files")
                 return
 
             ok = lidc_helpers.checkSeriesGeometry(str(series_dir))
             if not ok:
                 self.logger.warning("Geometry inconsistent for subject %s" % (s))
 
-            self.temp_subject_dir = os.path.join(self.output_dir, s, study_uid, series_uid)
-            os.makedirs(self.temp_subject_dir, exist_ok=True)
+            self.subject_dir = os.path.join(self.output_dir, s, study_uid, series_uid)
+            os.makedirs(self.subject_dir, exist_ok=True)
 
             if composite:
                 self.convert_for_scan_composite(scan, ct_datasets, series_dir)
             else:
                 self.convert_for_scan(scan, ct_datasets, series_dir)
 
-    def convert_for_scan(self, scan: pl.Scan, ct_datasets: Sequence[pydicom.Dataset], series_dir: str):
+    def convert_for_scan(self, scan: pl.Scan, ct_datasets: List[Dataset], series_dir: str):
 
         # now iterate over all nodules available for this subject
         anns = scan.annotations
-        self.logger.info("Have %d annotations for subject %s" % (len(anns), scan.patient_id))
+        self.logger.info(f'Have {len(anns)} annotations for subject {scan.patient_id}')
 
         self.instance_count = 0
 
         clustered_annotation_ids = []
 
         for n_count, nodule in enumerate(scan.cluster_annotations()):
-            nodule_uid = pydicom.uid.generate_uid(prefix=None) # by default, pydicom uses 2.25 root
+            nodule_uid = generate_uid(prefix=None)  # by default, pydicom uses 2.25 root
 
             for a_count, a in enumerate(nodule):
                 clustered_annotation_ids.append(a.id)
@@ -341,48 +393,42 @@ class LIDC2DICOMConverter:
             if ua.id not in clustered_annotation_ids:
                 a_count = a_count + 1
                 n_count = n_count + 1
-                nodule_uid = pydicom.uid.generate_uid(prefix=None)
+                nodule_uid = generate_uid(prefix=None)
                 self.convert_single_annotation(n_count, a_count, ua, ct_datasets, nodule_uid, series_dir, scan)
 
-    def convert_for_scan_composite(self, scan: pl.Scan, ct_datasets: Sequence[pydicom.Dataset], series_dir: str):
+    def convert_for_scan_composite(self, scan: pl.Scan, ct_datasets: List[Dataset], series_dir: str):
 
-        # Identify pylidc as the "algorithm" creating the annotations
-        pylidc_algo_id = AlgorithmIdentification(name='pylidc', version=pl.__version__)
-        pylidc_algo_id_seq = AlgorithmIdentificationSequence(
-            name='pylidc',
-            family=codes.cid7162.ManualProcessing,
-            version=pl.__version__
-        )
+        n_annotations = len(scan.annotations)
+        self.logger.info(f'Have {n_annotations} annotations for subject {scan.patient_id}')
+        if n_annotations == 0:
+            # Nothing to do
+            return
+
+        # Choose series numbers for the new series and increment the counter
+        seg_series_number = self.series_count
+        sr_series_number = self.series_count + 1
+        self.series_count += 2
 
         image_size = (ct_datasets[0].Rows, ct_datasets[0].Columns, len(ct_datasets))
 
-        series_num = 1000
-        dcm_seg_file = os.path.join(self.temp_subject_dir, 'all_segmentations.dcm')
+        total_ann_ind = 0
 
-        total_ind = 0
-        seg_descriptions = []
-        seg_masks = []
+        all_roi_measurements = []
         for n_count, nodule in enumerate(scan.cluster_annotations()):
-            nodule_uid = pydicom.uid.generate_uid(prefix=None) # by default, pydicom uses 2.25 root
+            nodule_uid = generate_uid(prefix=None)  # by default, pydicom uses 2.25 root
             nodule_name = f"Nodule {n_count + 1}"
 
             for a_count, a in enumerate(nodule):
 
                 seg_name = f"Nodule {n_count + 1} - Annotation {a._nodule_id}"
 
-                seg_desc = SegmentDescription(
-                    segment_number=total_ind,
-                    segment_label=seg_name,
-                    segmented_property_category=codes.SCT.MorphologicallyAbnormalStructure,
-                    segmented_property_type=codes.SCT.Nodule,
-                    algorithm_type=SegmentAlgorithmTypeValues.MANUAL,
-                    algorithm_identification=pylidc_algo_id_seq,
-                    tracking_uid=nodule_uid,
-                    tracking_id=nodule_name,
-                    anatomic_regions=[codes.SCT.Lung],
+                seg_desc = self.get_segment_description(
+                    segment_number=total_ann_ind,
+                    nodule_name=nodule_name,
+                    seg_name=seg_name,
+                    nodule_uid=nodule_uid,
+                    display_color=self.colors[total_ann_ind + 1]
                 )
-                seg_desc.SegmentDescription = seg_name
-                seg_desc.RecommendedDisplayCIELabValue = self.colors[total_ind + 1]
 
                 # Construct an empty mask the same size as the input series
                 mask = np.zeros(image_size, np.uint8)
@@ -391,171 +437,45 @@ class LIDC2DICOMConverter:
                 mask[a.bbox()] = a.boolean_mask().astype(np.int8)
                 mask = np.moveaxis(mask, 2, 0)
 
-                if total_ind == 0:
+                if total_ann_ind == 0:
                     # Need to create the segmentation object
-                    seg_dcm = Segmentation(
-                        source_images=ct_datasets,
+                    seg_dcm = self.get_segmentation_dataset(
+                        ct_datasets=ct_datasets,
                         pixel_array=mask,
-                        segmentation_type=SegmentationTypeValues.BINARY,
-                        segment_descriptions=[seg_desc],
-                        series_instance_uid=generate_uid(),
-                        series_number=series_num,
-                        sop_instance_uid=generate_uid(),
-                        instance_number=1,
-                        manufacturer="highdicom developers",
-                        manufacturer_model_name="highdicom",
-                        software_versions=f"{highdicom_version}",
-                        device_serial_number='1',
-                        content_description="Lung nodule segmentation",
-                        content_creator_name="Reader1",
-                        series_description=f"Segmentation of {seg_name}"
+                        seg_descs=[seg_desc],
+                        series_number=seg_series_number,
+                        series_description='Segmentation of All Nodules'
                     )
                 else:
                     # Add new segment to the existing object
                     seg_dcm.add_segments(mask, [seg_desc])
 
-                total_ind = total_ind + 1
+                roi_measurements = self.get_roi_measurements_and_evaluations(
+                    ann=a,
+                    ct_datasets=ct_datasets,
+                    seg_dcm=seg_dcm,
+                    segment_number=total_ann_ind,
+                    nodule_uid=nodule_uid,
+                    nodule_name=nodule_name
+                )
+                all_roi_measurements.append(roi_measurements)
 
-        # Add in some extra information
-        seg_dcm.BodyPartExamined = "Lung"
-        seg_dcm.ClinicalTrialSeriesID = "Session1"
-        seg_dcm.ClinicalTrialTimePointID = "1"
-        seg_dcm.ClinicalTrialCoordinatingCenterName = "TCIA"
-        seg_dcm.ContentLabel = "SEGMENTATION"
+                total_ann_ind = total_ann_ind + 1
 
         # Save the file
+        dcm_seg_file = os.path.join(self.subject_dir, 'all_segmentations.dcm')
         seg_dcm.save_as(dcm_seg_file)
 
-    def make_composite_objects_old(self, subject_id):
+        sr_dcm = self.get_sr_dataset(
+            roi_measurements=all_roi_measurements,
+            ct_datasets=ct_datasets,
+            series_number=sr_series_number,
+            series_description='All nodules measurements'
+        )
 
-        # convert all segmentations and measurements into composite objects
-        # 1. find all segmentations
-        # 2. read all, append metadata
-        # 3. find all measurements
-        # 4. read all, append metadata
-        import re
-        s = 'LIDC-IDRI-%04i' % subject_id
-        self.logger.info("Making composite objects for " + s)
-
-        scans = pl.query(pl.Scan).filter(pl.Scan.patient_id == s)
-        self.logger.info(" Found %d scans" % (scans.count()))
-
-        # cannot just take all segmentation files in a folder, since
-
-        for scan in scans:
-            study_uid = scan.study_instance_uid
-            series_uid = scan.series_instance_uid
-            series_dir = scan.get_path_to_dicom_files()
-            if not os.path.exists(series_dir):
-                self.logger.error("Files not found for subject " + s)
-                return
-
-            dcm_files = glob.glob(os.path.join(series_dir, "*.dcm"))
-            if not len(dcm_files):
-                logger.error("No DICOM files found for subject " + s)
-                return
-
-            first_file = os.path.join(series_dir, dcm_files[0])
-
-            try:
-                ct_dcm = pydicom.read_file(first_file)
-            except:
-                logger.error("Failed to read input file " + first_file)
-                return
-
-            self.instance_count = 1000
-
-            subject_scan_temp_dir = os.path.join(self.output_dir, s, study_uid, series_uid)
-            all_segmentations = glob.glob(os.path.join(subject_scan_temp_dir, 'Nodule*Annotation*.nrrd'))
-
-            if not len(all_segmentations):
-                continue
-
-            segMetadata = {}
-            nrrdSegFileList = ""
-            srMetadata = {}
-
-            for segID, seg in enumerate(all_segmentations):
-
-                prefix = seg[:-5]
-                matches = re.match('Nodule (\d+) - Annotation (.+)\.', os.path.split(seg)[1])
-                print("Nodule: " + matches.group(1)+" Annotation: " + matches.group(2))
-
-                if not segMetadata:
-                    segMetadata = json.load(open(prefix+".json"))
-                else:
-                    thisSegMetadata = json.load(open(prefix+".json"))
-                    segMetadata["segmentAttributes"].append(thisSegMetadata["segmentAttributes"][0])
-
-                if not srMetadata:
-                    srMetadata = json.load(open(prefix+" measurements.json"))
-                else:
-                    thisSRMetadata = json.load(open(prefix+" measurements.json"))
-                    thisSRMetadata["Measurements"][0]["ReferencedSegment"] = segID + 1
-                    srMetadata["Measurements"].append(thisSRMetadata["Measurements"][0])
-
-                nrrdSegFileList = nrrdSegFileList + seg + ","
-
-            segMetadata["ContentDescription"] = "Lung nodule segmentation - all"
-            segMetadata["SeriesDescription"] = "Segmentations of all nodules"
-            segMetadata["SeriesNumber"] = str(int(ct_dcm.SeriesNumber) + self.instance_count)
-            self.instance_count = self.instance_count + 1
-
-            # run SEG converter
-
-            allSegsJSON = os.path.join(subject_scan_temp_dir, "all_segmentations.json")
-            with open(allSegsJSON,"w") as f:
-                json.dump(segMetadata, f, indent=2)
-
-            compositeSEGFileName = os.path.join(subject_scan_temp_dir,"all_segmentations.dcm")
-            nrrdSegFileList = nrrdSegFileList[:-1]
-
-            converterCmd = ['itkimage2segimage', "--inputImageList", nrrdSegFileList, "--inputDICOMDirectory", series_dir, "--inputMetadata", allSegsJSON, "--outputDICOM", compositeSEGFileName]
-            if self.args.skip:
-                converterCmd.append('--skip')
-            self.logger.info("Converting to DICOM SEG with " + str(converterCmd))
-
-            sp = subprocess.Popen(converterCmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            (stdout, stderr) = sp.communicate()
-            self.logger.info("itkimage2segimage stdout: " + stdout.decode('ascii'))
-            self.logger.warning("itkimage2segimage stderr: " + stderr.decode('ascii'))
-
-            if not os.path.exists(compositeSEGFileName):
-                self.logger.error("Failed to access output composite SEG file for " + s)
-
-            # populate composite SR JSON
-            # need SEG SOPInstnaceUID for that purpose
-            segDcm = pydicom.read_file(compositeSEGFileName)
-            seg_uid = segDcm.SOPInstanceUID
-            ctSeriesUID = segDcm.ReferencedSeriesSequence[0].SeriesInstanceUID
-
-            for mItem in range(len(srMetadata["Measurements"])):
-                srMetadata["Measurements"][mItem]["segmentationSOPInstanceUID"] = seg_uid
-
-            srMetadata["compositeContext"] = [os.path.split(compositeSEGFileName)[1]]
-
-            srMetadata["ContentDescription"] = "Lung nodule measurements - all"
-            srMetadata["SeriesDescription"] = "Evaluations for all nodules"
-            srMetadata["SeriesNumber"] = str(int(ct_dcm.SeriesNumber) + self.instance_count)
-            self.instance_count = self.instance_count + 1
-
-            allSrsJSON = os.path.join(subject_scan_temp_dir, "all_measurements.json")
-            with open(allSrsJSON,"w") as f:
-                json.dump(srMetadata, f, indent=2)
-
-            compositeSRFileName = os.path.join(subject_scan_temp_dir,"all_measurements.dcm")
-            nrrdSegFileList = nrrdSegFileList[:-1]
-
-            converterCmd = ['tid1500writer', "--inputMetadata", allSrsJSON, "--inputImageLibraryDirectory", series_dir, "--inputCompositeContextDirectory", subject_scan_temp_dir, "--outputDICOM", compositeSRFileName]
-            self.logger.info("Converting to DICOM SR with " + str(converterCmd))
-
-            sp = subprocess.Popen(converterCmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            (stdout, stderr) = sp.communicate()
-            self.logger.info("tid1500writer stdout: " + stdout.decode('ascii'))
-            self.logger.warning("tid1500writer stderr: " + stderr.decode('ascii'))
-
-            if not os.path.exists(compositeSRFileName):
-                self.logger.error("Failed to access output composite SR file for " + s)
+        # Save the file
+        dcm_sr_file = os.path.join(self.subject_dir, 'all_measurements.dcm')
+        sr_dcm.save_as(dcm_sr_file)
 
 
 def main():
@@ -602,7 +522,7 @@ def main():
         default=False,
         dest="composite",
         help="Make composite objects (1 SEG and 1 SR that contain all segmentations/measurement for "
-              "all nodes/annotations). Composite objects will not be generated by default."
+             "all nodes/annotations). Composite objects will not be generated by default."
     )
     parser.add_argument(
         '--skip',
@@ -651,6 +571,7 @@ def main():
         logging.info("Processing all subjects from 1 to 1012.")
         for s in range(1, 1013, 1):
             converter.convert_for_subject(s, composite=args.composite)
+
 
 if __name__ == "__main__":
     main()
