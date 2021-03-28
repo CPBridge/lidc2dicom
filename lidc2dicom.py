@@ -117,12 +117,12 @@ class LIDC2DICOMConverter:
             software_versions=f"{highdicom_version}",
             device_serial_number='1',
             content_description="Lung nodule segmentation",
-            content_creator_name="Anonymous Reader",
+            content_creator_name="Anonymous^Reader",
             series_description=series_description
         )
 
         # Add in some extra information
-        seg_dcm.BodyPartExamined = "Lung"
+        seg_dcm.BodyPartExamined = "lUNG"
         seg_dcm.ClinicalTrialSeriesID = "Session1"
         seg_dcm.ClinicalTrialTimePointID = "1"
         seg_dcm.ClinicalTrialCoordinatingCenterName = "TCIA"
