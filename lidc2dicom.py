@@ -222,6 +222,7 @@ class LIDC2DICOMConverter:
     def get_sr_dataset(self,
                        roi_measurements: List[VolumetricROIMeasurementsAndQualitativeEvaluations],
                        ct_datasets: List[Dataset],
+                       seg_dataset: Dataset,
                        series_number: int,
                        series_description: str):
         # Be explicit about reader being anonymous
@@ -243,7 +244,7 @@ class LIDC2DICOMConverter:
 
         # Create the Structured Report instance
         sr_dcm = Comprehensive3DSR(
-            evidence=ct_datasets,
+            evidence=ct_datasets + [seg_dataset],
             content=measurement_report[0],
             series_number=series_number,
             series_instance_uid=generate_uid(),
@@ -326,6 +327,7 @@ class LIDC2DICOMConverter:
         sr_dcm = self.get_sr_dataset(
             roi_measurements=[roi_measurements],
             ct_datasets=ct_subset,
+            seg_dataset=seg_dcm,
             series_number=sr_series_number,
             series_description=sr_name
         )
@@ -469,6 +471,7 @@ class LIDC2DICOMConverter:
         sr_dcm = self.get_sr_dataset(
             roi_measurements=all_roi_measurements,
             ct_datasets=ct_datasets,
+            seg_dataset=seg_dcm,
             series_number=sr_series_number,
             series_description='All nodules measurements'
         )
