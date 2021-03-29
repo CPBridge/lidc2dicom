@@ -23,6 +23,7 @@ from highdicom.sr.content import (
     SourceImageForMeasurement
 )
 from highdicom.sr.sop import Comprehensive3DSR
+from highdicom.sr.enum import RelationshipTypeValues
 from highdicom.sr.templates import (
     AlgorithmIdentification,
     Measurement,
@@ -197,7 +198,8 @@ class LIDC2DICOMConverter:
                 qualitative_evaluations.append(
                     CodeContentItem(
                         name=CodedConcept(**self.concepts_dictionary[attribute]),
-                        value=CodedConcept(**self.values_dictionary[attribute][str(getattr(ann, attribute))])
+                        value=CodedConcept(**self.values_dictionary[attribute][str(getattr(ann, attribute))]),
+                        relationship_type=RelationshipTypeValues.HAS_PROPERTIES
                     )
                 )
             except KeyError:
