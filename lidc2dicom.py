@@ -418,8 +418,12 @@ class LIDC2DICOMConverter:
 
                 seg_name = f"Nodule {n_count + 1} - Annotation {a._nodule_id}"
 
+                # A number for this segment within the segmentation object
+                # (must begin at 1)
+                segment_number = total_ann_ind + 1
+
                 seg_desc = self.get_segment_description(
-                    segment_number=total_ann_ind + 1,
+                    segment_number=segment_number,
                     nodule_name=nodule_name,
                     seg_name=seg_name,
                     nodule_uid=nodule_uid,
@@ -450,7 +454,7 @@ class LIDC2DICOMConverter:
                     ann=a,
                     ct_datasets=ct_datasets,
                     seg_dcm=seg_dcm,
-                    segment_number=total_ann_ind,
+                    segment_number=segment_number,
                     nodule_uid=nodule_uid,
                     nodule_name=nodule_name
                 )
