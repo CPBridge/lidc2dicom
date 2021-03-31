@@ -141,7 +141,7 @@ class LIDC2DICOMConverter:
         referenced_segment = ReferencedSegment(
             sop_class_uid=seg_dcm.SOPClassUID,
             sop_instance_uid=seg_dcm.SOPInstanceUID,
-            segment_number=1,
+            segment_number=segment_number,
             source_series=SourceSeriesForSegmentation(
                 ct_datasets[0].SeriesInstanceUID
             )
