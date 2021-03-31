@@ -74,13 +74,6 @@ class LIDC2DICOMConverter:
                                 seg_name: str,
                                 nodule_uid: str,
                                 display_color: List[int]):
-        # Description of pylidc as the "algorithm" creating the segmentation
-        pylidc_algo_id_seq = AlgorithmIdentificationSequence(
-            name='pylidc',
-            family=codes.cid7162.ManualProcessing,
-            version=pl.__version__
-        )
-
         # Descriptive information about this segment
         seg_desc = SegmentDescription(
             segment_number=segment_number,
@@ -88,7 +81,6 @@ class LIDC2DICOMConverter:
             segmented_property_category=codes.SCT.MorphologicallyAbnormalStructure,
             segmented_property_type=codes.SCT.Nodule,
             algorithm_type=SegmentAlgorithmTypeValues.MANUAL,
-            algorithm_identification=pylidc_algo_id_seq,
             tracking_uid=nodule_uid,
             tracking_id=nodule_name,
             anatomic_regions=[codes.SCT.Lung],
@@ -123,7 +115,7 @@ class LIDC2DICOMConverter:
         )
 
         # Add in some extra information
-        seg_dcm.BodyPartExamined = "lUNG"
+        seg_dcm.BodyPartExamined = "LUNG"
         seg_dcm.ClinicalTrialSeriesID = "Session1"
         seg_dcm.ClinicalTrialTimePointID = "1"
         seg_dcm.ClinicalTrialCoordinatingCenterName = "TCIA"
@@ -231,7 +223,7 @@ class LIDC2DICOMConverter:
         observer_context = ObserverContext(
             observer_type=codes.DCM.Person,
             observer_identifying_attributes=PersonObserverIdentifyingAttributes(
-                name='anonymous'
+                name='anonymous^observer'
             )
         )
         observation_context = ObservationContext(
