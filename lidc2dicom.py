@@ -52,6 +52,7 @@ class LIDC2DICOMConverter:
 
         self.args = args
         self.output_dir = args.output_dir
+        self.uid_output_names = args.uid_output_names
 
         self.colors_file = "GenericColors.txt"
 
@@ -310,7 +311,10 @@ class LIDC2DICOMConverter:
         )
 
         # Save the file
-        dcm_seg_file = os.path.join(self.subject_dir, seg_name + '.dcm')
+        if self.uid_output_names:
+            dcm_seg_file = os.path.join(self.subject_dir, seg_dcm.SOPInstanceUID + '.dcm')
+        else:
+            dcm_seg_file = os.path.join(self.subject_dir, seg_name + '.dcm')
         seg_dcm.save_as(dcm_seg_file)
 
         self.logger.info("Creating DICOM SR")
@@ -335,7 +339,10 @@ class LIDC2DICOMConverter:
         )
 
         # Save the file
-        dcm_sr_file = os.path.join(self.subject_dir, sr_name + '.dcm')
+        if self.uid_output_names:
+            dcm_sr_file = os.path.join(self.subject_dir, sr_dcm.SOPInstanceUID + '.dcm')
+        else:
+            dcm_sr_file = os.path.join(self.subject_dir, sr_name + '.dcm')
         sr_dcm.save_as(dcm_sr_file)
 
     def convert_for_subject(self, subject_id: int, composite: bool = False):
@@ -468,10 +475,13 @@ class LIDC2DICOMConverter:
                 )
                 all_roi_measurements.append(roi_measurements)
 
-                total_ann_ind = total_ann_ind + 1
+                total_ann_ind += 1
 
         # Save the file
-        dcm_seg_file = os.path.join(self.subject_dir, 'all_segmentations.dcm')
+        if self.uid_output_names:
+            dcm_seg_file = os.path.join(self.subject_dir, seg_dcm.SOPInstanceUID + '.dcm')
+        else:
+            dcm_seg_file = os.path.join(self.subject_dir, 'all_segmentations.dcm')
         seg_dcm.save_as(dcm_seg_file)
 
         sr_dcm = self.get_sr_dataset(
@@ -483,7 +493,10 @@ class LIDC2DICOMConverter:
         )
 
         # Save the file
-        dcm_sr_file = os.path.join(self.subject_dir, 'all_measurements.dcm')
+        if self.uid_output_names:
+            dcm_sr_file = os.path.join(self.subject_dir, sr_dcm.SOPInstanceUID + '.dcm')
+        else:
+            dcm_sr_file = os.path.join(self.subject_dir, 'all_measurements.dcm')
         sr_dcm.save_as(dcm_sr_file)
 
 
@@ -496,6 +509,7 @@ def main():
     )
     parser.add_argument(
         '--subject-range',
+        '-r',
         dest="subject_range",
         nargs=2,
         type=int,
@@ -503,12 +517,14 @@ def main():
     )
     parser.add_argument(
         '--all-subjects',
+        '-a',
         dest="all_subjects",
         action="store_true",
         help="Process all subjects (up to 1012). Overrides all other subject specifications."
     )
     parser.add_argument(
         '--subjects',
+        '-s',
         type=int,
         nargs='+',
         dest="subject_ids",
@@ -516,16 +532,19 @@ def main():
     )
     parser.add_argument(
         '--log',
+        '-l',
         dest="log_file",
         help="Location of the file to store processing log."
     )
     parser.add_argument(
         '--output-dir',
+        '-o',
         dest="output_dir",
         help="Directory for storing the results of conversion."
     )
     parser.add_argument(
         '--composite',
+        '-c',
         action="store_true",
         default=False,
         dest="composite",
@@ -534,6 +553,7 @@ def main():
     )
     parser.add_argument(
         '--skip',
+        '-S',
         action="store_true",
         default=False,
         dest="skip",
@@ -541,9 +561,17 @@ def main():
     )
     parser.add_argument(
         '--images-dir',
+        '-i',
         dest="images_dir",
         help="Directory with the CT images of the LIDC-IDRI collection. The directory should be organized "
              "following this pattern: <subject ID>/<study UID>/<series UID>."
+    )
+    parser.add_argument(
+        '--uid-output-names',
+        '-u',
+        action='store_true',
+        dest="uid_output_names",
+        help="Name output DICOM files by their SOP Instance UID. If False, a human-readable name is used."
     )
 
     args = parser.parse_args()
