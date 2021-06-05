@@ -539,7 +539,7 @@ class LIDC2DICOMConverter:
             nodule_uid = UID() 
 
             for a_count, ann in enumerate(nodule):
-                clustered_annotation_ids.append(a.id)
+                clustered_annotation_ids.append(ann.id)
                 self.convert_single_annotation(
                     n_count=n_count,
                     a_count=a_count,
