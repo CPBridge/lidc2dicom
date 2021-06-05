@@ -232,7 +232,7 @@ class LIDC2DICOMConverter:
 
         """
         # Get measurements from a single annotation and encode in a TID 1411
-        template
+        # template
 
         # Identify pylidc as the "algorithm" creating the annotations
         pylidc_algo_id = AlgorithmIdentification(name='pylidc', version=pl.__version__)
