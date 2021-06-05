@@ -11,11 +11,10 @@ import numpy as np
 
 from pydicom import Dataset
 from pydicom.sr.codedict import codes
-from pydicom.uid import generate_uid
 from pydicom.valuerep import PersonName
 
 from highdicom.version import __version__ as highdicom_version
-from highdicom import AlgorithmIdentificationSequence
+from highdicom import AlgorithmIdentificationSequence, UID
 from highdicom.seg import (
     Segmentation,
     SegmentDescription,
@@ -110,9 +109,9 @@ class LIDC2DICOMConverter:
             pixel_array=pixel_array,
             segmentation_type=SegmentationTypeValues.BINARY,
             segment_descriptions=seg_descs,
-            series_instance_uid=generate_uid(),
+            series_instance_uid=UID(),
             series_number=series_number,
-            sop_instance_uid=generate_uid(),
+            sop_instance_uid=UID(),
             instance_number=1,
             manufacturer="highdicom developers",
             manufacturer_model_name="highdicom",
@@ -164,7 +163,7 @@ class LIDC2DICOMConverter:
         # Volume measurement
         volume_measurement = Measurement(
             name=codes.SCT.Volume,
-            tracking_identifier=TrackingIdentifier(uid=generate_uid()),
+            tracking_identifier=TrackingIdentifier(uid=UID()),
             value=ann.volume,
             unit=codes.UCUM.CubicMillimeter,
             referenced_images=referenced_images,
@@ -173,7 +172,7 @@ class LIDC2DICOMConverter:
         # Diameter measurement
         diameter_measurement = Measurement(
             name=codes.SCT.Diameter,
-            tracking_identifier=TrackingIdentifier(uid=generate_uid()),
+            tracking_identifier=TrackingIdentifier(uid=UID()),
             value=ann.diameter,
             unit=codes.UCUM.Millimeter,
             referenced_images=referenced_images,
@@ -182,7 +181,7 @@ class LIDC2DICOMConverter:
         # Surface area measurement
         surface_area_measurement = Measurement(
             name=CodedConcept(value='C0JK', scheme_designator='IBSI', meaning="Surface area of mesh"),
-            tracking_identifier=TrackingIdentifier(uid=generate_uid()),
+            tracking_identifier=TrackingIdentifier(uid=UID()),
             value=ann.surface_area,
             unit=codes.UCUM.SquareMillimeter,
             referenced_images=referenced_images,
@@ -250,8 +249,8 @@ class LIDC2DICOMConverter:
             evidence=ct_datasets + [seg_dataset],
             content=measurement_report[0],
             series_number=series_number,
-            series_instance_uid=generate_uid(),
-            sop_instance_uid=generate_uid(),
+            series_instance_uid=UID(),
+            sop_instance_uid=UID(),
             instance_number=1,
             manufacturer='highdicom developers',
             is_complete=True,
@@ -311,10 +310,12 @@ class LIDC2DICOMConverter:
         )
 
         # Save the file
+        seg_series_dir = os.path.join(self.subject_dir, seg_dcm.SeriesInstanceUID)
+        os.makedirs(seg_series_dir)
         if self.uid_output_names:
-            dcm_seg_file = os.path.join(self.subject_dir, seg_dcm.SOPInstanceUID + '.dcm')
+            dcm_seg_file = os.path.join(seg_series_dir, seg_dcm.SOPInstanceUID + '.dcm')
         else:
-            dcm_seg_file = os.path.join(self.subject_dir, seg_name + '.dcm')
+            dcm_seg_file = os.path.join(seg_series_dir, seg_name + '.dcm')
         seg_dcm.save_as(dcm_seg_file)
 
         self.logger.info("Creating DICOM SR")
@@ -339,10 +340,12 @@ class LIDC2DICOMConverter:
         )
 
         # Save the file
+        sr_series_dir = os.path.join(self.subject_dir, seg_dcm.SeriesInstanceUID)
+        os.makedirs(sr_series_dir)
         if self.uid_output_names:
-            dcm_sr_file = os.path.join(self.subject_dir, sr_dcm.SOPInstanceUID + '.dcm')
+            dcm_sr_file = os.path.join(sr_series_dir, sr_dcm.SOPInstanceUID + '.dcm')
         else:
-            dcm_sr_file = os.path.join(self.subject_dir, sr_name + '.dcm')
+            dcm_sr_file = os.path.join(sr_series_dir, sr_name + '.dcm')
         sr_dcm.save_as(dcm_sr_file)
 
     def convert_for_subject(self, subject_id: int, composite: bool = False):
@@ -372,7 +375,7 @@ class LIDC2DICOMConverter:
             if not ok:
                 self.logger.warning("Geometry inconsistent for subject %s" % (s))
 
-            self.subject_dir = os.path.join(self.output_dir, s, study_uid, series_uid)
+            self.subject_dir = os.path.join(self.output_dir, s, study_uid)
             os.makedirs(self.subject_dir, exist_ok=True)
 
             if composite:
@@ -391,7 +394,7 @@ class LIDC2DICOMConverter:
         clustered_annotation_ids = []
 
         for n_count, nodule in enumerate(scan.cluster_annotations()):
-            nodule_uid = generate_uid(prefix=None)  # by default, pydicom uses 2.25 root
+            nodule_uid = UID()  # by default, pydicom uses 2.25 root
 
             for a_count, a in enumerate(nodule):
                 clustered_annotation_ids.append(a.id)
@@ -404,7 +407,7 @@ class LIDC2DICOMConverter:
             if ua.id not in clustered_annotation_ids:
                 a_count = a_count + 1
                 n_count = n_count + 1
-                nodule_uid = generate_uid(prefix=None)
+                nodule_uid = UID()
                 self.convert_single_annotation(n_count, a_count, ua, ct_datasets, nodule_uid, series_dir, scan)
 
     def convert_for_scan_composite(self, scan: pl.Scan, ct_datasets: List[Dataset], series_dir: str):
@@ -426,7 +429,7 @@ class LIDC2DICOMConverter:
 
         all_roi_measurements = []
         for n_count, nodule in enumerate(scan.cluster_annotations()):
-            nodule_uid = generate_uid(prefix=None)  # by default, pydicom uses 2.25 root
+            nodule_uid = UID()  # by default, pydicom uses 2.25 root
             nodule_name = f"Nodule {n_count + 1}"
 
             for a_count, a in enumerate(nodule):
@@ -478,10 +481,12 @@ class LIDC2DICOMConverter:
                 total_ann_ind += 1
 
         # Save the file
+        seg_series_dir = os.path.join(self.subject_dir, seg_dcm.SeriesInstanceUID)
+        os.makedirs(seg_series_dir)
         if self.uid_output_names:
-            dcm_seg_file = os.path.join(self.subject_dir, seg_dcm.SOPInstanceUID + '.dcm')
+            dcm_seg_file = os.path.join(seg_series_dir, seg_dcm.SOPInstanceUID + '.dcm')
         else:
-            dcm_seg_file = os.path.join(self.subject_dir, 'all_segmentations.dcm')
+            dcm_seg_file = os.path.join(seg_series_dir, 'all_segmentations.dcm')
         seg_dcm.save_as(dcm_seg_file)
 
         sr_dcm = self.get_sr_dataset(
@@ -493,10 +498,12 @@ class LIDC2DICOMConverter:
         )
 
         # Save the file
+        sr_series_dir = os.path.join(self.subject_dir, sr_dcm.SeriesInstanceUID)
+        os.makedirs(sr_series_dir)
         if self.uid_output_names:
-            dcm_sr_file = os.path.join(self.subject_dir, sr_dcm.SOPInstanceUID + '.dcm')
+            dcm_sr_file = os.path.join(sr_series_dir, sr_dcm.SOPInstanceUID + '.dcm')
         else:
-            dcm_sr_file = os.path.join(self.subject_dir, 'all_measurements.dcm')
+            dcm_sr_file = os.path.join(sr_series_dir, 'all_measurements.dcm')
         sr_dcm.save_as(dcm_sr_file)
 
 
@@ -550,14 +557,6 @@ def main():
         dest="composite",
         help="Make composite objects (1 SEG and 1 SR that contain all segmentations/measurement for "
              "all nodes/annotations). Composite objects will not be generated by default."
-    )
-    parser.add_argument(
-        '--skip',
-        '-S',
-        action="store_true",
-        default=False,
-        dest="skip",
-        help="Do not encode empty slices in the DICOM SEG objects. Empty slices will not be skipped by default."
     )
     parser.add_argument(
         '--images-dir',
