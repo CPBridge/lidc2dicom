@@ -340,7 +340,7 @@ class LIDC2DICOMConverter:
         )
 
         # Save the file
-        sr_series_dir = os.path.join(self.subject_dir, seg_dcm.SeriesInstanceUID)
+        sr_series_dir = os.path.join(self.subject_dir, sr_dcm.SeriesInstanceUID)
         os.makedirs(sr_series_dir)
         if self.uid_output_names:
             dcm_sr_file = os.path.join(sr_series_dir, sr_dcm.SOPInstanceUID + '.dcm')
