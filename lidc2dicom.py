@@ -72,12 +72,40 @@ class LIDC2DICOMConverter:
 
         self.series_count = 1000
 
-    def get_segment_description(self,
-                                segment_number: int,
-                                nodule_name: str,
-                                seg_name: str,
-                                nodule_uid: str,
-                                display_color: List[int]):
+    def get_segment_description(
+        self,
+        segment_number: int,
+        nodule_name: str,
+        seg_name: str,
+        nodule_uid: str,
+        display_color: List[int]
+    ):
+        """Get a segment description object describing a segment of a segmentation image.
+
+        In this application, each segment represents the annotation of a single nodule by
+        a single reader. This method includes all information common to all segments,
+        including the fact that this is a manual segmentation of a nodule found in the lung,
+        using standard coding schemes.
+
+        Parameters
+        ----------
+        segment_number: int
+            Number of the segment within the segmentation image.
+        nodule_name: str
+            Name for the nodule this segment represents.
+        seg_name: str
+            Description of the segment.
+        nodule_uid: str
+            Tracking unique identifier for the nodule this
+        display_color: List[int]
+            Suggested display color for this segment when rendered by viewers.
+
+        Returns
+        -------
+        highdicom.sr.SegmentDescription
+            Description of the segment.
+
+        """
         # Descriptive information about this segment
         seg_desc = SegmentDescription(
             segment_number=segment_number,
@@ -94,12 +122,38 @@ class LIDC2DICOMConverter:
 
         return seg_desc
 
-    def get_segmentation_dataset(self,
-                                 ct_datasets: List[Dataset],
-                                 pixel_array: np.ndarray,
-                                 seg_descs: List[SegmentDescription],
-                                 series_number: int,
-                                 series_description: str):
+    def get_segmentation_dataset(
+        self,
+        ct_datasets: List[Dataset],
+        pixel_array: np.ndarray,
+        seg_descs: List[SegmentDescription],
+        series_number: int,
+        series_description: str
+    ):
+        """Construct the SOP Instance dataset for a segmentation image.
+
+        This method includes information common to all segmentation images,
+        such as the manufacturer name and software version.
+
+        Parameters
+        ----------
+        ct_datasets: List[pydicom.dataset.Dataset]
+            List of CT datasets from which the segmentations were derived.
+        pixel_array: np.ndarray
+            Pixel array of the segmentation masks
+        seg_descs: List[SegmentDescription]
+            Descriptions of each segment in the segmentation image.
+        series_number: int
+            Series number to apply to the newly created segmentation image.
+        series_description: str
+            Series description of the newly-created segmentation image.
+
+        Returns
+        -------
+        highdicom.seg.Segmentation
+            Dataset for the newly-created Segmentation SOP Instance.
+
+        """
         anonymous_person_name = PersonName.from_named_components(
             given_name='anonymous',
             family_name='observer'
@@ -131,14 +185,54 @@ class LIDC2DICOMConverter:
 
         return seg_dcm
 
-    def get_roi_measurements_and_evaluations(self,
-                                             ann: pl.Annotation,
-                                             ct_datasets: List[Dataset],
-                                             seg_dcm: Dataset,
-                                             segment_number: int,
-                                             nodule_uid: str,
-                                             nodule_name: str):
-        # Get measurements from a single annotation and encode in a TID 1411 report
+    def get_roi_measurements_and_evaluations(
+        self,
+        ann: pl.Annotation,
+        ct_datasets: List[Dataset],
+        seg_dcm: Dataset,
+        segment_number: int,
+        nodule_uid: str,
+        nodule_name: str
+    ):
+        """Construct a measurements group for a given annotation for inclusion
+        in the SR document content tree.
+
+        In this application, a measurements group is used to encode
+        measurements derived from a single segment in the segmentation image,
+        i.e. an annotation of a single nodule by a single reader. The
+        measurements consist of the volume, surface area, and diameter of the
+        nodule, as well as several qualitative evaluations that record rating
+        of the subtlety, internal structure, calcification, sphericity, margin,
+        lobulation, spiculation, texture, and malignancy of the nodule. This
+        information is provided directly from the pylidc.Annotation object.
+
+        Parameters
+        ----------
+        ann: pl.Annotation
+            The annotation object, in which all measurements and evaluations
+            are recorded.
+        ct_datasets: List[pydicom.dataset.Dataset]
+            List of CT datasets from which the segmentations were derived.
+        seg_dcm: highdicom.seg.Segmentation
+            Segmentation image dataset containing the segmentations that will
+            be referenced in the SR content.
+        segment_number: int
+            Number of the segment within the segmentation image that
+            corresponds to this annotation.
+        nodule_uid: str
+            Tracking unique identifier for the nodule this
+        nodule_name: str
+            Name for the nodule this segment represents.
+
+        Returns
+        -------
+        highdicom.sr.VolumetricROIMeasurementsAndQualitativeEvaluations
+            SR template (TID 1411) object representing measurements and
+            evaluations for a single nodule as annotated by a single reader.
+
+        """
+        # Get measurements from a single annotation and encode in a TID 1411
+        template
 
         # Identify pylidc as the "algorithm" creating the annotations
         pylidc_algo_id = AlgorithmIdentification(name='pylidc', version=pl.__version__)
@@ -217,12 +311,42 @@ class LIDC2DICOMConverter:
 
         return roi_measurements
 
-    def get_sr_dataset(self,
-                       roi_measurements: List[VolumetricROIMeasurementsAndQualitativeEvaluations],
-                       ct_datasets: List[Dataset],
-                       seg_dataset: Dataset,
-                       series_number: int,
-                       series_description: str):
+    def get_sr_dataset(
+        self,
+        roi_measurements: List[VolumetricROIMeasurementsAndQualitativeEvaluations],
+        ct_datasets: List[Dataset],
+        series_number: int,
+        series_description: str
+    ):
+        """Construct a Structured Report containing measurements and
+        evaluations for one or more annotations.
+
+        Depending on the command-line parameters, each SR document may contain
+        measurements and evaluations for the annotation of a single nodule by a
+        single reader, or in the case of "--composite", measurements and
+        evaluations of one or more nodules, each annotated by one or more
+        distinct readers.
+
+        Parameters
+        ----------
+        roi_measurements: List[highdicom.sr.VolumetricROIMeasurementsAndQualitativeEvaluations]
+            List of measurement groups, each containing to the measurements and
+            evaluations of a single nodule by a single reader, and referencing
+            a single segment in a segmentation image.
+        ct_datasets: List[pydicom.dataset.Dataset]
+            List of CT datasets from which the segmentations were derived.
+        series_number: int
+            Series number of the newly created SR document.
+        series_description: str
+            Series description of the newly-created SR document.
+
+        Returns
+        -------
+        highdicom.sr.Comprehensive3DSR
+            Structured Report document dataset using template TID 1500
+            containing measurements and evaluations for one or more nodules.
+
+        """
         # Be explicit about reader being anonymous
         anonymous_person_name = PersonName.from_named_components(
             given_name='anonymous',
@@ -262,17 +386,50 @@ class LIDC2DICOMConverter:
 
         return sr_dcm
 
-    def convert_single_annotation(self,
-                                  n_count: int,
-                                  a_count: int,
-                                  a: pl.Annotation,
-                                  ct_datasets: List[Dataset],
-                                  nodule_uid: str,
-                                  series_dir: str,
-                                  scan: pl.Scan):
+    def convert_single_annotation(
+        self,
+        n_count: int,
+        a_count: int,
+        ann: pl.Annotation,
+        ct_datasets: List[Dataset],
+        nodule_uid: str,
+        series_dir: str,
+        scan: pl.Scan
+    ):
+        """Convert a single annotation into a DICOM Segmentation image and a
+        DICOM SR document.
 
+        A single annotation is a segmentation and a collection of related
+        measurements and evaluations created by a single reader for a single
+        nodule. The resulting DICOM datasets are saved to the filesystem as
+        files.
+
+        Parameters
+        ----------
+        n_count: int
+            Nodule count, i.e. running count of nodules within this scan.
+            This is used to name the nodule.
+        a_count: int
+            Annotation count, i.e. running count of annotations for this
+            nodule. This is used to name the annotation.
+        ann: pylidc.Annotation
+            Pylidc Annotation object containing all the information for this
+            annotation, including the segmentation itself as well as
+            corresponding measurements and evaluations.
+        ct_datasets: List[pydicom.dataset.Dataset]
+            List of CT datasets from which the annotations were derived.
+        nodule_uid: str
+            Tracking unique identifier for the nodule this.
+        series_dir: str
+            Path to directory containing the files for the original CT DICOM
+            series.
+        scan: pylidc.Scan
+            Pylidc Scan object containing all information about the CT scan
+            on which the annotation was performed.
+
+        """
         nodule_name = f"Nodule {n_count + 1}"
-        seg_name = f"Nodule {n_count + 1} - Annotation {a._nodule_id}"
+        seg_name = f"Nodule {n_count + 1} - Annotation {ann._nodule_id}"
 
         # Choose series numbers for the new series and increment the counter
         seg_series_number = self.series_count
@@ -286,11 +443,11 @@ class LIDC2DICOMConverter:
         mask = np.zeros(image_size, np.uint8)
 
         # Fill in the mask elements with the segmentation
-        mask[a.bbox()] = a.boolean_mask().astype(np.int8)
+        mask[ann.bbox()] = ann.boolean_mask().astype(np.int8)
 
         # Find the subset of the source images relevant for the segmentation
-        ct_subset = ct_datasets[a.bbox()[2]]
-        mask_subset = mask[(slice(None), slice(None), a.bbox()[2])]
+        ct_subset = ct_datasets[ann.bbox()[2]]
+        mask_subset = mask[(slice(None), slice(None), ann.bbox()[2])]
         mask_subset = np.moveaxis(mask_subset, 2, 0)
 
         seg_desc = self.get_segment_description(
@@ -320,10 +477,10 @@ class LIDC2DICOMConverter:
 
         self.logger.info("Creating DICOM SR")
 
-        sr_name = f"Nodule {n_count + 1} - Annotation {a._nodule_id} measurements"
+        sr_name = f"Nodule {n_count + 1} - Annotation {ann._nodule_id} measurements"
 
         roi_measurements = self.get_roi_measurements_and_evaluations(
-            ann=a,
+            ann=ann,
             ct_datasets=ct_subset,
             seg_dcm=seg_dcm,
             segment_number=1,
@@ -334,7 +491,6 @@ class LIDC2DICOMConverter:
         sr_dcm = self.get_sr_dataset(
             roi_measurements=[roi_measurements],
             ct_datasets=ct_subset,
-            seg_dataset=seg_dcm,
             series_number=sr_series_number,
             series_description=sr_name
         )
@@ -348,44 +504,30 @@ class LIDC2DICOMConverter:
             dcm_sr_file = os.path.join(sr_series_dir, sr_name + '.dcm')
         sr_dcm.save_as(dcm_sr_file)
 
-    def convert_for_subject(self, subject_id: int, composite: bool = False):
-        s = 'LIDC-IDRI-%04i' % subject_id
-        self.logger.info("Processing subject %s" % (s))
-        scans = pl.query(pl.Scan).filter(pl.Scan.patient_id == s)
-        self.logger.info(" Found %d scans" % (scans.count()))
+    def convert_for_scan(
+        self,
+        scan: pl.Scan, 
+        ct_datasets: List[Dataset],
+        series_dir: str
+    ):
+        """Convert all annotations within a given scan to DICOM format as
+        single Segmentations and SRs.
 
-        for scan in scans:
-            study_uid = scan.study_instance_uid
-            series_uid = scan.series_instance_uid
-            series_dir = Path(scan.get_path_to_dicom_files())
-            if not os.path.exists(series_dir):
-                self.logger.error("Files not found for subject " + s)
-                return
+        Resulting DICOM files are stored to the filesystem.
 
-            # Reset the series counter (used to number new series)
-            self.series_count = 100
+        Parameters
+        ----------
+        scan: pylidc.Scan
+            Pylidc Scan object containing all information about the CT scan
+            on which the annotation was performed.
+        ct_datasets: List[pydicom.dataset.Dataset]
+            List of CT datasets from which the annotations were derived.
+        series_dir: str
+            Path to directory containing the files for the original CT DICOM
+            series.
 
-            try:
-                ct_datasets = scan.load_all_dicom_images()
-            except Exception:
-                self.logger.error("Failed to read input CT files")
-                return
-
-            ok = lidc_helpers.checkSeriesGeometry(str(series_dir))
-            if not ok:
-                self.logger.warning("Geometry inconsistent for subject %s" % (s))
-
-            self.subject_dir = os.path.join(self.output_dir, s, study_uid)
-            os.makedirs(self.subject_dir, exist_ok=True)
-
-            if composite:
-                self.convert_for_scan_composite(scan, ct_datasets, series_dir)
-            else:
-                self.convert_for_scan(scan, ct_datasets, series_dir)
-
-    def convert_for_scan(self, scan: pl.Scan, ct_datasets: List[Dataset], series_dir: str):
-
-        # now iterate over all nodules available for this subject
+        """
+        # Iterate over all nodules available for this subject
         anns = scan.annotations
         self.logger.info(f'Have {len(anns)} annotations for subject {scan.patient_id}')
 
@@ -394,26 +536,73 @@ class LIDC2DICOMConverter:
         clustered_annotation_ids = []
 
         for n_count, nodule in enumerate(scan.cluster_annotations()):
-            nodule_uid = UID()  # by default, pydicom uses 2.25 root
+            nodule_uid = UID() 
 
-            for a_count, a in enumerate(nodule):
+            for a_count, ann in enumerate(nodule):
                 clustered_annotation_ids.append(a.id)
-                self.convert_single_annotation(n_count, a_count, a, ct_datasets, nodule_uid, series_dir, scan)
+                self.convert_single_annotation(
+                    n_count=n_count,
+                    a_count=a_count,
+                    ann=ann,
+                    ct_datasets=ct_datasets,
+                    nodule_uid=nodule_uid,
+                    series_dir=series_dir,
+                    scan=scan
+                )
 
         if len(clustered_annotation_ids) != len(anns):
-            self.logger.warning("%d annotations unaccounted for!" % (len(anns) - len(clustered_annotation_ids)))
+            n_missing = len(anns) - len(clustered_annotation_ids)
+            self.logger.warning(
+                f"{n_missing} annotations unaccounted for!"
+            )
 
         for ua in anns:
             if ua.id not in clustered_annotation_ids:
                 a_count = a_count + 1
                 n_count = n_count + 1
                 nodule_uid = UID()
-                self.convert_single_annotation(n_count, a_count, ua, ct_datasets, nodule_uid, series_dir, scan)
+                self.convert_single_annotation(
+                    n_count=n_count,
+                    a_count=a_count,
+                    ann=ua,
+                    ct_datasets=ct_datasets,
+                    nodule_uid=nodule_uid,
+                    series_dir=series_dir,
+                    scan=scan
+                )
 
-    def convert_for_scan_composite(self, scan: pl.Scan, ct_datasets: List[Dataset], series_dir: str):
+    def convert_for_scan_composite(
+        self,
+        scan: pl.Scan,
+        ct_datasets: List[Dataset],
+        series_dir: str
+    ):
+        """Convert all annotations for a scan into a single "composite" DICOM
+        Segmentation image and accompanying DICOM SR document.
 
+        A single annotation is a segmentation and a collection of related
+        measurements and evaluations created by a single reader for a single
+        nodule. The resulting DICOM datasets are saved to the filesystem as
+        files. This method combines all such annotations for a single scan
+        into a single DICOM Segmentation image and SR document (in contrast
+        to the convert_for_scan method).
+
+        Parameters
+        ----------
+        scan: pylidc.Scan
+            Pylidc Scan object containing all information about the CT scan
+            on which the annotation was performed.
+        ct_datasets: List[pydicom.dataset.Dataset]
+            List of CT datasets from which the annotations were derived.
+        series_dir: str
+            Path to directory containing the files for the original CT DICOM
+            series.
+
+        """
         n_annotations = len(scan.annotations)
-        self.logger.info(f'Have {n_annotations} annotations for subject {scan.patient_id}')
+        self.logger.info(
+            f'Have {n_annotations} annotations for subject {scan.patient_id}'
+        )
         if n_annotations == 0:
             # Nothing to do
             return
@@ -423,13 +612,17 @@ class LIDC2DICOMConverter:
         sr_series_number = self.series_count + 1
         self.series_count += 2
 
-        image_size = (ct_datasets[0].Rows, ct_datasets[0].Columns, len(ct_datasets))
+        image_size = (
+            ct_datasets[0].Rows,
+            ct_datasets[0].Columns,
+            len(ct_datasets)
+        )
 
         total_ann_ind = 0
 
         all_roi_measurements = []
         for n_count, nodule in enumerate(scan.cluster_annotations()):
-            nodule_uid = UID()  # by default, pydicom uses 2.25 root
+            nodule_uid = UID()
             nodule_name = f"Nodule {n_count + 1}"
 
             for a_count, a in enumerate(nodule):
@@ -492,7 +685,6 @@ class LIDC2DICOMConverter:
         sr_dcm = self.get_sr_dataset(
             roi_measurements=all_roi_measurements,
             ct_datasets=ct_datasets,
-            seg_dataset=seg_dcm,
             series_number=sr_series_number,
             series_description='All nodules measurements'
         )
@@ -506,8 +698,61 @@ class LIDC2DICOMConverter:
             dcm_sr_file = os.path.join(sr_series_dir, 'all_measurements.dcm')
         sr_dcm.save_as(dcm_sr_file)
 
+    def convert_for_subject(self, subject_id: int, composite: bool = False):
+        """Convert all scans for a given subject to DICOM format.
+
+        Resulting DICOM files are stored to the filesystem.
+
+        Parameters
+        ----------
+        subject_id: int
+            LIDC subject ID (between 1 and 1012 inclusive).
+        composite: bool
+            If True, create Segmentation and SR objects containing all
+            annotations for each scan combined. If False (the default),
+            a single SR and Segmentation are created for each annotation.
+
+        """
+        s = 'LIDC-IDRI-%04i' % subject_id
+        self.logger.info("Processing subject %s" % (s))
+        scans = pl.query(pl.Scan).filter(pl.Scan.patient_id == s)
+        self.logger.info(" Found %d scans" % (scans.count()))
+
+        for scan in scans:
+            study_uid = scan.study_instance_uid
+            series_uid = scan.series_instance_uid
+            series_dir = Path(scan.get_path_to_dicom_files())
+            if not os.path.exists(series_dir):
+                self.logger.error("Files not found for subject " + s)
+                return
+
+            # Reset the series counter (used to number new series)
+            self.series_count = 100
+
+            try:
+                ct_datasets = scan.load_all_dicom_images()
+            except Exception:
+                self.logger.error("Failed to read input CT files")
+                return
+
+            ok = lidc_helpers.checkSeriesGeometry(str(series_dir))
+            if not ok:
+                self.logger.warning("Geometry inconsistent for subject %s" % (s))
+
+            self.subject_dir = os.path.join(self.output_dir, s, study_uid)
+            os.makedirs(self.subject_dir, exist_ok=True)
+
+            if composite:
+                self.convert_for_scan_composite(scan, ct_datasets, series_dir)
+            else:
+                self.convert_for_scan(scan, ct_datasets, series_dir)
+
 
 def main():
+    """Main entrypoint function. Parses command-line arguments, creates converter object
+    and initiates conversion.
+
+    """
     parser = argparse.ArgumentParser(
         usage="%(prog)s --subjects <LIDC_subjectID>\n\n"
         "This program will parse the DICOM and XML data for LIDC subject specified and generate"
