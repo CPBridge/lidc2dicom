@@ -1,3 +1,4 @@
+import argparse
 from pathlib import Path
 import logging
 from typing import List
@@ -11,32 +12,35 @@ import numpy as np
 from pydicom import Dataset
 from pydicom.sr.codedict import codes
 from pydicom.uid import generate_uid
+from pydicom.valuerep import PersonName
 
 from highdicom.version import __version__ as highdicom_version
-from highdicom.content import AlgorithmIdentificationSequence
-from highdicom.seg.content import SegmentDescription
-from highdicom.seg.enum import SegmentAlgorithmTypeValues, SegmentationTypeValues
-from highdicom.seg.sop import Segmentation
-
-from highdicom.sr.content import (
-    FindingSite,
-    SourceImageForMeasurement
+from highdicom import AlgorithmIdentificationSequence
+from highdicom.seg import (
+    Segmentation,
+    SegmentDescription,
+    SegmentAlgorithmTypeValues,
+    SegmentationTypeValues
 )
-from highdicom.sr.sop import Comprehensive3DSR
-from highdicom.sr.enum import RelationshipTypeValues
-from highdicom.sr.templates import (
+
+from highdicom.sr import (
     AlgorithmIdentification,
+    CodedConcept,
+    Comprehensive3DSR,
+    FindingSite,
     Measurement,
     MeasurementReport,
-    ReferencedSegment,
-    ObservationContext,
     ObserverContext,
+    ObservationContext,
     PersonObserverIdentifyingAttributes,
-    VolumetricROIMeasurementsAndQualitativeEvaluations,
+    QualitativeEvaluation,
+    ReferencedSegment,
+    RelationshipTypeValues,
+    SourceImageForMeasurement,
+    SourceSeriesForSegmentation,
     TrackingIdentifier,
+    VolumetricROIMeasurementsAndQualitativeEvaluations,
 )
-from highdicom.sr.content import SourceSeriesForSegmentation
-from highdicom.sr.value_types import CodedConcept, CodeContentItem
 
 import lidc_conversion_utils.helpers as lidc_helpers
 
@@ -96,6 +100,10 @@ class LIDC2DICOMConverter:
                                  seg_descs: List[SegmentDescription],
                                  series_number: int,
                                  series_description: str):
+        anonymous_person_name = PersonName.from_named_components(
+            given_name='anonymous',
+            family_name='observer'
+        )
         seg_dcm = Segmentation(
             source_images=ct_datasets,
             pixel_array=pixel_array,
@@ -110,7 +118,7 @@ class LIDC2DICOMConverter:
             software_versions=f"{highdicom_version}",
             device_serial_number='1',
             content_description="Lung nodule segmentation",
-            content_creator_name="Anonymous^Reader",
+            content_creator_name=anonymous_person_name,
             series_description=series_description
         )
 
@@ -142,17 +150,14 @@ class LIDC2DICOMConverter:
             sop_class_uid=seg_dcm.SOPClassUID,
             sop_instance_uid=seg_dcm.SOPInstanceUID,
             segment_number=segment_number,
-            source_series=SourceSeriesForSegmentation(
-                ct_datasets[0].SeriesInstanceUID
+            source_series=SourceSeriesForSegmentation.from_source_image(
+                ct_datasets[0]
             )
         )
 
         # Describe the imaging measurements for the image region defined above
         referenced_images = [
-            SourceImageForMeasurement(
-                referenced_sop_class_uid=ds.SOPClassUID,
-                referenced_sop_instance_uid=ds.SOPInstanceUID
-            )
+            SourceImageForMeasurement.from_source_image(ds)
             for ds in ct_datasets
         ]
         # Volume measurement
@@ -188,10 +193,9 @@ class LIDC2DICOMConverter:
         for attribute in self.concepts_dictionary.keys():
             try:
                 qualitative_evaluations.append(
-                    CodeContentItem(
+                    QualitativeEvaluation(
                         name=CodedConcept(**self.concepts_dictionary[attribute]),
-                        value=CodedConcept(**self.values_dictionary[attribute][str(getattr(ann, attribute))]),
-                        relationship_type=RelationshipTypeValues.HAS_PROPERTIES
+                        value=CodedConcept(**self.values_dictionary[attribute][str(getattr(ann, attribute))])
                     )
                 )
             except KeyError:
@@ -220,10 +224,14 @@ class LIDC2DICOMConverter:
                        series_number: int,
                        series_description: str):
         # Be explicit about reader being anonymous
+        anonymous_person_name = PersonName.from_named_components(
+            given_name='anonymous',
+            family_name='observer'
+        )
         observer_context = ObserverContext(
             observer_type=codes.DCM.Person,
             observer_identifying_attributes=PersonObserverIdentifyingAttributes(
-                name='anonymous^observer'
+                name=anonymous_person_name
             )
         )
         observation_context = ObservationContext(
@@ -247,7 +255,7 @@ class LIDC2DICOMConverter:
             manufacturer='highdicom developers',
             is_complete=True,
             is_verified=True,
-            verifying_observer_name='anonymous',
+            verifying_observer_name=anonymous_person_name,
             verifying_organization='anonymous',
             series_description=series_description
         )
@@ -480,7 +488,6 @@ class LIDC2DICOMConverter:
 
 
 def main():
-    import argparse
     parser = argparse.ArgumentParser(
         usage="%(prog)s --subjects <LIDC_subjectID>\n\n"
         "This program will parse the DICOM and XML data for LIDC subject specified and generate"
