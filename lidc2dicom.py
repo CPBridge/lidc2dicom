@@ -315,6 +315,7 @@ class LIDC2DICOMConverter:
         self,
         roi_measurements: List[VolumetricROIMeasurementsAndQualitativeEvaluations],
         ct_datasets: List[Dataset],
+        seg_dataset: Segmentation,
         series_number: int,
         series_description: str
     ):
@@ -335,6 +336,8 @@ class LIDC2DICOMConverter:
             a single segment in a segmentation image.
         ct_datasets: List[pydicom.dataset.Dataset]
             List of CT datasets from which the segmentations were derived.
+        seg_dataset: Segmentation
+            Segmentation image referenced by the SR.
         series_number: int
             Series number of the newly created SR document.
         series_description: str
@@ -491,6 +494,7 @@ class LIDC2DICOMConverter:
         sr_dcm = self.get_sr_dataset(
             roi_measurements=[roi_measurements],
             ct_datasets=ct_subset,
+            seg_dataset=seg_dcm,
             series_number=sr_series_number,
             series_description=sr_name
         )
@@ -685,6 +689,7 @@ class LIDC2DICOMConverter:
         sr_dcm = self.get_sr_dataset(
             roi_measurements=all_roi_measurements,
             ct_datasets=ct_datasets,
+            seg_dataset=seg_dcm,
             series_number=sr_series_number,
             series_description='All nodules measurements'
         )
